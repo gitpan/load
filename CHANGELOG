@@ -1,3 +1,12 @@
+0.12	29 September 2003
+	Added support for register additional "use" modules for specific
+	packages (e.g. when subroutines need to be handled by a source
+	filter).  Tests to be added later, if ever here.
+
+	26 September 2003
+	Realised testing for running under taint was pretty trivial: the
+	entire test-suite now runs twice: once with and once without tainting.
+
 0.11	26 September 2003
 	Turns out load.pm didn't work when taint was active.  And it silently
 	failed to boot.  This should now be fixed.  Added a todo to make tests

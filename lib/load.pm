@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.11';
+$VERSION  = '0.12';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -48,16 +48,32 @@ EOD
  *UNIVERSAL::can = sub { &{$can}( @_ ) || (ref( $_[0] ) ? undef : _can( @_ )) };
 }
 
+# Hash with modules that should be used extra, keyed to package
+
+my %use;
+
 # Satisfy -require-
 
 1;
 
 #---------------------------------------------------------------------------
 
+# class methods
+
+#---------------------------------------------------------------------------
+#  IN: 1 class (ignored)
+#      2 package for which to add additional use-s
+#      3 additional module to be used
+
+sub register { $use{$_[1]} = ($use{$_[1]} || '')."use $_[2];" } #register
+
+#---------------------------------------------------------------------------
+
 # standard Perl features
 
 #---------------------------------------------------------------------------
-#  IN: class (ignored)
+#  IN: 1 class (ignored)
+#      2..N various parameters
 
 sub import {
 
@@ -374,9 +390,10 @@ sub _can {
 # Initialize the source to be evalled
 
     _trace( "ondemand ${module}::$sub, line $subline (offset $start, $length bytes)" ) if $trace;
+    my $use = $use{$module} || '';
     my $source = <<EOD;
 package $module;
-no warnings;
+no warnings;$use
 #line $subline "$file (loaded on demand from offset $start for $length bytes)
 EOD
 
@@ -715,6 +732,25 @@ forcing them to become unshared as far as the operating system is concerned).
 Benchmarks have shown that the overhead of the extra CPU is easily offset by
 the reduction of the amount of data that needs to be copied (and processed)
 when a thread is created.
+
+=head1 SOURCE FILTERS
+
+If your module wants to use "load" to load subroutines on demand B<and> that
+module needs a source filter (which is usually activated with a "use"
+statement), then those modules need to be used when the source of the
+subroutine is compiled.  The class method "register" is intended to be
+used from such a module, typicallly like this:
+
+ sub import {
+   my $package = caller();
+   load->register( $package,__PACKAGE__ )  # register caller's package
+    if defined( $load::VERSION )           # if load.pm loaded
+     and $load::VERSION > 0.11;            # and recent enough
+ }
+
+The first parameter is the name of the package B<in> which subroutines need
+extra modules "use"d.  The second parameter is the name of the module that
+needs to be "use"d.
 
 =head1 TODO
 
