@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.15';
+$VERSION  = '0.16';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -13,17 +13,15 @@ $VERSION  = '0.15';
 #--------------------------------------------------------------------------
 #use strict; # activate for checking load.pm only please!
 
-# Define flags
+# Define loading now flag
 # Do this at compile time
 #  Make sure we have warnings or dummy warnings for older Perl's
-#  Flag indicating whether everything should be loaded immediately
-#  Flag indicating we want a trace to STDERR
+#  Set flag indicating whether everything should be loaded immediately
 
-my ($now,$trace);
+my $now;
 BEGIN {
     eval {require warnings} or do {$INC{'warnings.pm'} = ''};
     $now   = $ENV{'LOAD_NOW'} || 0;   # environment var undocumented for now
-    $trace = $ENV{'LOAD_TRACE'} || 0; # also undocumented for now
 
 #  If there seems to be a version for "ifdef" loaded
 #   Die now if it is too old
@@ -32,22 +30,28 @@ BEGIN {
 #   Set compile time flag for non-availability of "ifdef.pm"
 
     if (defined $ifdef::VERSION) {
-        die "Must have 'ifdef' version 0.06 or higher to handle on demand loading\n" if $ifdef::VERSION < 0.06;
+        die "Must have 'ifdef' version 0.07 or higher to handle on demand loading\n" if $ifdef::VERSION < 0.07;
         *IFDEF = sub () { 1 };
     } else {
         *IFDEF = sub () { 0 };
     }
 
 #  If we're supposed to trace
+#   Set compile time flag indicating we want a trace to STDERR
 #   Create the subroutine for showing the trace
+#  Else
+#   Set compile time flag indicating we DON'T want a trace to STDERR
 
-    if ($trace) {
+    if ($ENV{'LOAD_TRACE'}) {
+        *TRACE = sub () { 1 };
         eval <<'EOD'; # only way to ensure it isn't there when we're not tracing
 sub _trace {
     my $tid = $threads::VERSION ? ' ['.threads->tid.']' : '';
     warn "load$tid: ",$_[0],$/;
 } #_trace
 EOD
+    } else {
+        *TRACE = sub () { 0 };
     }
 
 #  Allow for dirty tricks
@@ -164,15 +168,18 @@ sub import {
 sub AUTOLOAD {
 
 # Obtain the module and subroutine name
-# If subroutine could not be loaded
-#  Return if we requested DESTROY
-# Go execute the routine (whether it exists or not)
+# Go execute the routine if it exists
 
     $load::AUTOLOAD =~ m#^(.*)::(.*?)$#;
-    unless (_can( $1,$2 )) {
-        return if $2 eq 'DESTROY';
-    }
-    goto &{$1.'::'.$2};
+    goto &{$load::AUTOLOAD} if _can( $1,$2 );
+
+# Return if we requested DESTROY
+# Obtain caller information
+# Die with the appropriate information
+
+    return if $2 eq 'DESTROY';
+    my ($package,$filename,$line) = caller;
+    die "Undefined subroutine &$load::AUTOLOAD called at $filename line $line\n";
 } #AUTOLOAD
 
 #---------------------------------------------------------------------------
@@ -254,35 +261,36 @@ sub _scan {
 
     if ($loadnow) {
         _trace( "now $module, line $endline (offset $endstart, onwards)" )
-         if $trace;
+         if TRACE;
 
 #  Create the package prelude
-#  Enable slurp mode;
-#  Obtain the source in $1 so that we can eval this under taint
+#  Obtain the source in so that we can eval this under taint
 #  Eval the source code, possibly processing through 'ifdef.pm"
 #  Die now if failed
 
-        my $prelude = <<EOD;
+        my $source = <<EOD;
 package $module;
 no warnings;
 #line $endline "$file (loaded now from offset $endstart)"
 EOD
-        local $/;
-        <VERSION> =~ m#^(.*)$#s;
-        eval (IFDEF ? ifdef::process( $prelude.$1 ) : $prelude.$1);
+        $source .= do {local $/; <VERSION> =~ m#^(.*)$#s; $1};
+        eval (IFDEF ? ifdef::process( $source ) : $source );
         die "Error evaluating source: $@" if $@;
 
 # Else (we're to load everything ondemand)
 #  Initialize the start position
 #  Initialize the sub name being handled
 #  Initialize the line number of the sub being handled
+#  Initialize the original length of the line (needed only when ifdeffing)
 
     } else {
         my $start;
         my $sub = '';
         my $subline;
+        my $length;
 
 #  While there are lines to be read
+#   Save the length of the original line if needed
 #   Do any conversions that are needed
 #   Increment line number
 #   Reloop if a pod line, setting flag right on the fly
@@ -290,7 +298,8 @@ EOD
 #   Outloop now if we hit the actual documentation
 
         while (<VERSION>) {
-            &ifdef::oneline if IFDEF; # should get optimized away if not needed
+            $length = length if IFDEF;
+            &ifdef::oneline if IFDEF;
             $line++;
             $pod = !m#^=cut#, next if m#^=\w#;
             next if $pod or m#^\s*\##;
@@ -311,7 +320,7 @@ EOD
 #   Remember where at which offset this sub starts
 #  Store the information of the last sub if there was one
 
-            my $seek = tell( VERSION ) - length();
+            my $seek = tell( VERSION ) - (IFDEF ? $length : length);
             _store( $module,$sub,$subline,$start,$seek-$start ) if $sub;
             $sub = $1;
             die "Cannot handle fully qualified subroutine '$sub'\n"
@@ -367,7 +376,7 @@ sub _store {
 # Store the data
 
     _trace( "store $_[0]::$_[1], line $_[2] (offset $_[3], $_[4] bytes)" )
-     if $trace;
+     if TRACE;
     eval "package $_[0]; sub $_[1]";
     die "Could not create stub: $@\n" if $@;
     $load::AUTOLOAD{$_[0],$_[1]} = pack( 'L3',$_[2],$_[3],$_[4] )
@@ -414,12 +423,12 @@ sub _can {
 # Show trace info if so requested
 # Initialize the source to be evalled
 
-    _trace( "ondemand ${module}::$sub, line $subline (offset $start, $length bytes)" ) if $trace;
+    _trace( "ondemand ${module}::$sub, line $subline (offset $start, $length bytes)" ) if TRACE;
     my $use = $use{$module} || '';
     my $source = <<EOD;
 package $module;
 no warnings;$use
-#line $subline "$file (loaded on demand from offset $start for $length bytes)
+#line $subline "$file (loaded on demand from offset $start for $length bytes)"
 EOD
 
 # Add the source of the subroutine to it and get number of bytes read
@@ -431,17 +440,18 @@ EOD
      if $read != $length;
     close VERSION;
 
-# Create an untainted version of the source code
 # Make sure "ifdef" starts with a clean slate
-# Make the stuff known to the system, possiblt processing througth "ifdef"
+# Create an untainted version of the source code
+# Evaluate the source we have now
 # Die now if failed
 # Remove the info of this sub (it's not needed anymore)
 # Return the code reference to what we just loaded
 
-    $source =~ m#^(.*)$#s;
     &ifdef::reset if IFDEF; # should get optimized away if not needed
-    eval (IFDEF ? ifdef::process( $1 ) : $1);
-    die "load: $@" if $@;
+my $original = $source;
+    $source =~ m#^(.*)$#s; $source = IFDEF ? ifdef::process( $1 ) : $1;
+    eval $source;
+    die "load: $@\n$original====================\n$source" if $@;
     delete $load::AUTOLOAD{$module,$sub};
     return \&{$module.'::'.$sub};
 } #_can
@@ -798,6 +808,14 @@ having it skip __END__ when the global "now" flag is set.
 Possibly we should use the <DATA> handle from a module if there is one, or dup
 it and use that, rather than opening the file again.
 
+=head1 MODULE RATING
+
+If you want to find out how this module is appreciated by other people, please
+check out this module's rating at L<http://cpanratings.perl.org/l/load> (if
+there are any ratings for this module).  If you like this module, or otherwise
+would like to have your opinion known, you can add your rating of this module
+at L<http://cpanratings.perl.org/rate/?distribution=load>.
+
 =head1 ACKNOWLEDGEMENTS
 
 Frank Tolstrup for helping ironing out all of the Windows related issues.
@@ -810,7 +828,7 @@ Please report bugs to <perlbugs@dijkmat.nl>.
 
 =head1 COPYRIGHT
 
-Copyright (c) 2002-2003 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
+Copyright (c) 2002-2004 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
 reserved.  This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 

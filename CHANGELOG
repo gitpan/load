@@ -1,3 +1,13 @@
+0.16	15 March 2004
+	Changed tracing calls so that they get optimized away if tracing is
+	not active.
+
+	Fixed bug that would cause "ifdef.pm" to split on every character if
+	"now" loading was selected.
+
+	Fixed bug with subs that really do not exist.  Added some more test
+	with regards to the interface with "ifdef.pm".
+
 0.15	14 March 2004
 	Added support for "ifdef.pm".  If ifdef.pm is loaded, then all eval's
 	will be done using the source filter provided by ifdef, possibly
