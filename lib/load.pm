@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.07';
+$VERSION  = '0.08';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -13,16 +13,21 @@ $VERSION  = '0.07';
 #--------------------------------------------------------------------------
 #use strict; # activate for checking load.pm only please!
 
-# Make sure we have warnings or dummy warnings for older Perl's
+# Define flags
+# Do this at compile time
+#  Make sure we have warnings or dummy warnings for older Perl's
+#  Flag indicating whether everything should be loaded immediately
+#  Flag indicating we want a trace to STDERR
 
-BEGIN { eval {require warnings} or do {$INC{'warnings.pm'} = ''} } #BEGIN
-
-# Flag indicating whether everything should be loaded immediately
-
-my $now = $ENV{'LOAD_NOW'}; #environment variable undocumented for now
+my ($now,$trace);
+BEGIN {
+    eval {require warnings} or do {$INC{'warnings.pm'} = ''};
+    $now   = $ENV{'LOAD_NOW'} || 0;   # environment var undocumented for now
+    $trace = $ENV{'LOAD_TRACE'} || 0; # also undocumented for now
+} #BEGIN
 
 # Allow for dirty tricks
-# Save current code ref of UNIVERSAL::can
+# Save current code ref of UNIVERSAL::can (will continue to live inside closure)
 # Replace it with something that will also check on demand subroutines
 
 {
@@ -92,7 +97,7 @@ sub import {
         unless ($inmain) {
             _scan( $module,$thisnow ) if $scan;
             no strict 'refs';
-            *{$module.'::AUTOLOAD'}=\&AUTOLOAD if $autoload;
+            *{$module.'::AUTOLOAD'} = \&AUTOLOAD if $autoload;
         }
 
 # Elseif called from a script
@@ -195,14 +200,19 @@ sub _scan {
     my $endstart = tell VERSION;
 
 # If we're supposed to load now
+#  Show trace info if requested
+
+    if ($loadnow) {
+        warn "load: now $module, line $endline (offset $endstart, onwards)\n"
+         if $trace;
+
 #  Enable slurp mode and make the stuff known to the system
 #  Die now if failed
 
-    if ($loadnow) {
         {local $/; eval <<EOD.<VERSION>};
 package $module;
 no warnings;
-#line $endline "$file (loaded on demand from offset $endstart)"
+#line $endline "$file (loaded now from offset $endstart)"
 EOD
         die "Error evaluating source: $@" if $@;
 
@@ -291,9 +301,12 @@ sub _filename {
 
 sub _store {
 
+# Show trace info if so requested
 # Make sure there is a stub
 # Store the data
 
+    warn "load: store $_[0]::$_[1], line $_[2] (offset $_[3], $_[4] bytes)\n"
+     if $trace;
     eval "package $_[0]; sub $_[1];";
     $load::AUTOLOAD{$_[0],$_[1]} = pack( 'L3',$_[2],$_[3],$_[4] )
 } #_store
@@ -333,8 +346,10 @@ sub _can {
     seek( VERSION,$start,0 )
      or die "Could not seek to $start for $module\::$sub";
 
+# Show trace info if so requested
 # Initialize the source to be evalled
 
+    warn "load: ondemand ${module}::$sub, line $subline (offset $start, $length bytes)\n" if $trace;
     my $source = <<EOD;
 package $module;
 no warnings;

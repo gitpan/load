@@ -5,7 +5,7 @@ BEGIN {				# Magic Perl CORE pragma
     }
 }
 
-use Test::More tests => 6 + (4 * 24);
+use Test::More tests => 6 + (5*24) + (3*3) + (3*3) + (2*3);
 use strict;
 BEGIN { eval {require warnings} or do {$INC{'warnings.pm'} = ''} } #BEGIN
 use warnings;
@@ -24,7 +24,6 @@ my $ondemand = "ondemand $load::VERSION\n";
 my $INC = qq{@{[map {"-I$_"} @INC]}};
 
 ok( (open OUT, ">$filepm"), "Create dummy module for testing" );
-
 ok( (print OUT <<EOD),"Write the dummy module" );
 package $module;
 use load;
@@ -32,11 +31,20 @@ use load;
 sub always { print "always \$VERSION\n" }
 __END__
 sub ondemand { print "ondemand \$VERSION\n" }
+sub empty {}
 EOD
-
 ok( (close OUT),"Close the dummy module" );
 
-foreach my $action ('',qw(-Mload=now -Mload=ondemand -Mload=dontscan)) {
+$ENV{'LOAD_NOW'} = 0;
+$ENV{'LOAD_TRACE'} = 0;
+
+foreach (qw(env -Mload=now -Mload=ondemand -Mload=dontscan),'') {
+    my $action = $_;
+    if ($action eq 'env') {
+        $ENV{'LOAD_NOW'} = 1;
+        $action = '';
+    }
+
     ok( (open( IN,
      "$^X -I. $INC $action -MFoo -e 'print ${module}::always()' |" )),
       "Open check always on $action" );
@@ -70,6 +78,47 @@ foreach my $action ('',qw(-Mload=now -Mload=ondemand -Mload=dontscan)) {
         ok( !defined <IN>,"Check $_ with $action" );
         ok( (close IN),"Close check $_ bar with $action" );
     }
+}
+
+$ENV{'LOAD_NOW'} = 0;
+$ENV{'LOAD_TRACE'} = 1;
+
+foreach ('',qw(-Mload=ondemand -Mload=dontscan)) {
+    my $action = $_;
+    ok( (open( IN, "$^X -I. $INC $action -MFoo -e '' 2>&1 |" )),
+     "Open trace store $action" );
+    like( join( '',<IN> ),
+    qr/load: store Foo::ondemand, line \d+ \(offset \d+, \d+ bytes\)
+load: store Foo::empty, line \d+ \(offset \d+, \d+ bytes\)
+$/,"Check trace ondemand $action" );
+    ok( (close IN),"Close trace ondemand $action" );
+}
+
+foreach ('',qw(-Mload=ondemand -Mload=dontscan)) {
+    my $action = $_;
+    ok( (open( IN, "$^X -I. $INC $action -MFoo -e 'Foo::empty()' 2>&1 |" )),
+     "Open trace store load $action" );
+    like( join( '',<IN> ),
+    qr/load: store Foo::ondemand, line \d+ \(offset \d+, \d+ bytes\)
+load: store Foo::empty, line \d+ \(offset \d+, \d+ bytes\)
+load: ondemand Foo::empty, line \d+ \(offset \d+, \d+ bytes\)
+$/,"Check trace ondemand $action" );
+    ok( (close IN),"Close trace ondemand $action" );
+}
+
+foreach (qw(-Mload=now),'env') {
+    my $action = $_;
+    if ($action eq 'env') {
+        $ENV{'LOAD_NOW'} = 1;
+        $action = '';
+    }
+
+    ok( (open( IN, "$^X -I. $INC $action -MFoo -e 'Foo::empty()' 2>&1 |" )),
+     "Open trace store load $action" );
+    like( join( '',<IN> ),
+    qr/load: now Foo, line \d+ \(offset \d+, onwards\)
+$/,"Check trace now $action" );
+    ok( (close IN),"Close trace ondemand $action" );
 }
 
 ok( (unlink $filepm),"Clean up dummy module" );

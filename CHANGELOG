@@ -1,3 +1,7 @@
+0.08	17 September 2003
+	Indeed, it is one of those days.  Added some more tests to make sure
+	that subroutines are indeed loaded on demand.
+
 0.07	17 September 2003
 	Argh.  I guess it is one of those days.  Using strict in load.pm
 	bleeds into the eval's and causes compile errors.  And of course
