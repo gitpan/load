@@ -1,0 +1,17 @@
+README for load
+
+The load.pm allows you to have Perl load subroutines only when necessary.
+It is primarily intended as a memory saving action, specifically for threaded
+Perl and mod_perl applications, but maybe useful in more traditional Perl
+applications as well.
+
+Copyright (c) 2002 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
+reserved.  This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+The build is standard:
+
+perl Makefile.PL
+make
+make test
+make install

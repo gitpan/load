@@ -1,0 +1,8 @@
+MANIFEST
+CHANGELOG
+README
+TODO
+VERSION
+Makefile.PL
+lib/load.pm
+t/load.t
