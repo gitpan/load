@@ -1,3 +1,19 @@
+0.06	17 September 2003
+	Finally figured how to make something like a test-suite.  Now checks
+	whether ondemand subs can be called and whether or not they exist
+	and can be can()ned.
+
+	Argh.  A type caused the "now" functionality to completely broken.
+	This is now fixed.  Problem was introduced in version 0.02.
+
+	Added optional support for strict and warnings in the source.
+
+	11 August 2003
+	Fixed stupid typo in Makefile.PL that caused description of module
+	not to be included ever.
+
+	Verified load.pm will work on Perl 5.8.1.
+
 0.05	29 December 2002
 	Increased version to be able to upload a more recent version of load.pm
 	to CPAN to prevent interference with Jos 'Kane' Boumans' version of

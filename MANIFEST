@@ -6,3 +6,4 @@ VERSION
 Makefile.PL
 lib/load.pm
 t/load.t
+META.yml                                 Module meta-data (added by MakeMaker)

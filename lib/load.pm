@@ -1,9 +1,19 @@
 package load;
 
 # Make sure we have version info for this module
+
+$VERSION  = '0.06';
+
+# Make sure we do everything by the book
+# Make sure we have warnings or dummy warnings for older Perl's
+
+use strict;
+BEGIN { eval {require warnings} or do {$INC{'warnings.pm'} = ''} } #BEGIN
+
+#---------------------------------------------------------------------------
+
 # Flag indicating whether everything should be loaded immediately
 
-$VERSION  = '0.05';
 my $now = 0;
 
 # Allow for dirty tricks
@@ -71,10 +81,12 @@ sub import {
 
 #   If we're in a module
 #    Scan the file, using local flag setting, if we should scan
+#    Allow for some dirty tricks
 #    Export AUTOLOAD if so requested
 
         unless ($inmain) {
             _scan( $module,$thisnow ) if $scan;
+            no strict 'refs';
             *{$module.'::AUTOLOAD'}=\&AUTOLOAD if $autoload;
         }
 
@@ -86,10 +98,12 @@ sub import {
 
 # Else (no parameters specified)
 #  Scan the source
+#  Allow for variable reference stuff
 #  And export the AUTOLOAD subroutine
 
     } else {
         _scan( $module );
+        no strict 'refs';
         *{$module.'::AUTOLOAD'} = \&AUTOLOAD;
     }
 } #import
@@ -125,16 +139,15 @@ sub _scan {
 # Make sure we won't clobber sensitive system vars
 
     my $module = shift;
-    my $loadnow = defined($_[0]) ? shift : $now;
+    my $loadnow = defined( $_[0] ) ? shift : $now;
     local( $_,$!,$@ );
 
 # Obtain the filename, die if failed
 # Attempt to open the file for reading, die if failed
-# Remove the .pm from the module name, we don't need it anymore
 
     my $file = _filename( $module )
      or die "Could not find file for '$module'";
-    open( VERSION,"<$file" )
+    open( VERSION,"<$file" ) # use VERSION as glob to save memory
      or die "Could not open file '$file' for '$module': $!";
 
 # Initialize line number
@@ -174,16 +187,15 @@ sub _scan {
 # Save the offset of the first line after __END__
 
     my $endline = $line+1;
-    my $endstart = tell( VERSION );
+    my $endstart = tell VERSION;
 
 # If we're supposed to load now
-#  Enable slurp mode
-#  Make the stuff known to the system
+#  Enable slurp mode and make the stuff known to the system
 #  Die now if failed
 
     if ($loadnow) {
-        {local( $/ ); eval <<EOD.<VERSION>};
-package $module
+        {local $/; eval <<EOD.<VERSION>};
+package $module;
 #line $endline "$file (loaded on demand from offset $endstart)"
 EOD
         die "Error evaluating source: $@" if $@;
@@ -230,22 +242,22 @@ EOD
             $sub = $1;
             die "Cannot handle fully qualified subroutine '$sub'\n"
              if $sub =~ m#::#;
-	    $subline = $line;
+            $subline = $line;
             $start = $seek;
         }
         _store(
-	  $module,
-	  $sub,
+          $module,
+          $sub,
           $subline,
-	  $start,
-	  (defined() ? tell( VERSION ) - length() : -s VERSION) - $start
-	) if $sub;
+          $start,
+          (defined() ? tell( VERSION ) - length() : -s VERSION) - $start
+        ) if $sub;
     }
 
 # Mark this module as scanned
 # Close the handle, we're done
 
-    $AUTOLOAD{$module} = undef;
+    $load::AUTOLOAD{$module} = undef;
     close( VERSION );
 } #_scan
 
@@ -277,7 +289,7 @@ sub _store {
 # Store the data
 
     eval "package $_[0]; sub $_[1];";
-    $AUTOLOAD{$_[0],$_[1]} = pack( 'L3',$_[2],$_[3],$_[4] )
+    $load::AUTOLOAD{$_[0],$_[1]} = pack( 'L3',$_[2],$_[3],$_[4] )
 } #_store
 
 #---------------------------------------------------------------------------
@@ -289,14 +301,17 @@ sub _can {
 
 # Obtain the module and subroutine name
 # Return now if trying for application (the real UNIVERSAL::can should do that)
+
+    my ($module,$sub) = @_;
+    return if $module eq 'main';
+
 # Scan the file if it wasn't done yet
 # Obtain coordinates of subroutine
 # Return now if not known
 
-    my ($module,$sub) = @_;
-    return if $module eq 'main';
-    _scan( $module ) unless exists( $AUTOLOAD{$module} );
-    my ($subline,$start,$length) = unpack( 'L3',$AUTOLOAD{$module,$sub} || '' );
+    _scan( $module ) unless exists( $load::AUTOLOAD{$module} );
+    my ($subline,$start,$length) =
+     unpack( 'L3',$load::AUTOLOAD{$module,$sub} || '' );
     return unless $start;
 
 # Make sure we don't clobber sensitive system variables
@@ -307,7 +322,7 @@ sub _can {
     local( $!,$@ );
     my $file = _filename( $module )
      or die "Could not find file for '$module.pm'";
-    open( VERSION,"<$file" )
+    open( VERSION,"<$file" ) # use VERSION glob to conserve memory
      or die "Could not open file '$file' for '$module.pm': $!";
     seek( VERSION,$start,0 )
      or die "Could not seek to $start for $module\::$sub";
@@ -324,7 +339,7 @@ EOD
     my $read = read( VERSION,$source,$length,length($source) );
     die "Error reading source: only read $read bytes instead of $length"
      if $read != $length;
-    close( VERSION );
+    close VERSION;
 
 # Make the stuff known to the system
 # Die now if failed
@@ -333,7 +348,7 @@ EOD
 
     eval $source;
     die "load: $@" if $@;
-    delete( $AUTOLOAD{$module,$sub} );
+    delete $load::AUTOLOAD{$module,$sub};
     return \&{$module.'::'.$sub};
 } #_can
 

@@ -1,3 +1,5 @@
 Add a real test-suite.
 
 Use the <DATA> handle if there is one available.
+
+Use a source-filter to implement a ":ondemand" attribute.
