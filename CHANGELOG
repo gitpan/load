@@ -1,3 +1,10 @@
+0.07	17 September 2003
+	Argh.  I guess it is one of those days.  Using strict in load.pm
+	bleeds into the eval's and causes compile errors.  And of course
+	the test-suite didn't catch it.  Removed stricture but added a
+	comment in the source about it.  Adapted the test-suite so it _will_
+	catch it this time (but won't of course, because it's fixed).
+
 0.06	17 September 2003
 	Finally figured how to make something like a test-suite.  Now checks
 	whether ondemand subs can be called and whether or not they exist

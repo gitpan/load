@@ -2,19 +2,24 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.06';
+$VERSION  = '0.07';
 
-# Make sure we do everything by the book
+#--------------------------------------------------------------------------
+# No, we're NOT using strict here.  There are several reasons, the most
+# important being that strict bleeds into the string eval's that load.pm
+# is doing, causing compilation errors in all but the most simple modules.
+# If you _do_ want stricture as a developer of load.pm, simply activate the
+# line below here
+#--------------------------------------------------------------------------
+#use strict; # activate for checking load.pm only please!
+
 # Make sure we have warnings or dummy warnings for older Perl's
 
-use strict;
 BEGIN { eval {require warnings} or do {$INC{'warnings.pm'} = ''} } #BEGIN
-
-#---------------------------------------------------------------------------
 
 # Flag indicating whether everything should be loaded immediately
 
-my $now = 0;
+my $now = $ENV{'LOAD_NOW'}; #environment variable undocumented for now
 
 # Allow for dirty tricks
 # Save current code ref of UNIVERSAL::can
@@ -196,6 +201,7 @@ sub _scan {
     if ($loadnow) {
         {local $/; eval <<EOD.<VERSION>};
 package $module;
+no warnings;
 #line $endline "$file (loaded on demand from offset $endstart)"
 EOD
         die "Error evaluating source: $@" if $@;
@@ -328,14 +334,17 @@ sub _can {
      or die "Could not seek to $start for $module\::$sub";
 
 # Initialize the source to be evalled
+
+    my $source = <<EOD;
+package $module;
+no warnings;
+#line $subline "$file (loaded on demand from offset $start for $length bytes)
+EOD
+
 # Add the source of the subroutine to it and get number of bytes read
 # Die now if we didn't get what we expected
 # Close the handle
 
-    my $source = <<EOD;
-package $module;
-#line $subline "$file (loaded on demand from offset $start for $length bytes)
-EOD
     my $read = read( VERSION,$source,$length,length($source) );
     die "Error reading source: only read $read bytes instead of $length"
      if $read != $length;

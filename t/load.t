@@ -19,8 +19,8 @@ can_ok( 'load',qw(
 
 my $module = "Foo";
 my $filepm = "$module.pm";
-my $always = "always\n";
-my $ondemand = "ondemand\n";
+my $always = "always $load::VERSION\n";
+my $ondemand = "ondemand $load::VERSION\n";
 my $INC = qq{@{[map {"-I$_"} @INC]}};
 
 ok( (open OUT, ">$filepm"), "Create dummy module for testing" );
@@ -28,10 +28,10 @@ ok( (open OUT, ">$filepm"), "Create dummy module for testing" );
 ok( (print OUT <<EOD),"Write the dummy module" );
 package $module;
 use load;
-\$VERSION = $load::VERSION;
-sub always { print "$always" }
+\$VERSION = '$load::VERSION';
+sub always { print "always \$VERSION\n" }
 __END__
-sub ondemand { print "$ondemand" }
+sub ondemand { print "ondemand \$VERSION\n" }
 EOD
 
 ok( (close OUT),"Close the dummy module" );
