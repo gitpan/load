@@ -46,34 +46,34 @@ foreach (qw(env -Mload=now -Mload=ondemand -Mload=dontscan),'') {
     }
 
     ok( (open( IN,
-     "$^X -I. $INC $action -MFoo -e 'print ${module}::always()' |" )),
+     qq{$^X -I. $INC $action -MFoo -e "print ${module}::always()" |} )),
       "Open check always on $action" );
     is( scalar <IN>,$always,"Check always with $action" );
     ok( (close IN),"Close check always with $action" );
 
     ok( (open( IN,
-     "$^X -I. $INC $action -MFoo -e 'print ${module}::ondemand()' |" )),
+     qq{$^X -I. $INC $action -MFoo -e "print ${module}::ondemand()" |} )),
       "Open check ondemand with $action" );
     is( scalar <IN>,$ondemand,"Check ondemand with $action" );
     ok( (close IN),"Close check ondemand with $action" );
 
     foreach (qw(always ondemand)) {
         ok( (open( IN,
-         "$^X -I. $INC $action -MFoo -e 'print exists \$Foo::{$_}' |" )),
+         qq{$^X -I. $INC $action -MFoo -e "print exists \\\$Foo::{$_}" |} )),
           "Open check exists $_ with $action" );
         is( scalar <IN>,'1',"Check exists $_ with $action" );
         ok( (close IN),"Close check exists $_ with $action" );
 
         ok( (open( IN,
-         "$^X -I. $INC $action -MFoo -e 'print Foo->can($_)' |" )),
+         qq{$^X -I. $INC $action -MFoo -e "print Foo->can($_)" |} )),
           "Open check Foo->can( $_ ) with $action" );
         ok( (<IN> =~ m#^CODE#),"Check Foo->can( $_ ) with $action" );
         ok( (close IN),"Close check Foo->can( $_ ) with $action" );
     }
 
-    foreach ('exists $Foo::{bar}','Foo->can(bar)') {
+    foreach ('exists \\$Foo::{bar}','Foo->can(bar)') {
         ok( (open( IN,
-         "$^X -I. $INC $action -MFoo -e '$_' |" )),
+         qq{$^X -I. $INC $action -MFoo -e "$_" |} )),
           "Open check $_ with $action" );
         ok( !defined <IN>,"Check $_ with $action" );
         ok( (close IN),"Close check $_ bar with $action" );
@@ -85,7 +85,7 @@ $ENV{'LOAD_TRACE'} = 1;
 
 foreach ('',qw(-Mload=ondemand -Mload=dontscan)) {
     my $action = $_;
-    ok( (open( IN, "$^X -I. $INC $action -MFoo -e '' 2>&1 |" )),
+    ok( (open( IN, qq{$^X -I. $INC $action -MFoo -e "" 2>&1 |} )),
      "Open trace store $action" );
     like( join( '',<IN> ),
     qr/load: store Foo::ondemand, line \d+ \(offset \d+, \d+ bytes\)
@@ -96,7 +96,7 @@ $/,"Check trace ondemand $action" );
 
 foreach ('',qw(-Mload=ondemand -Mload=dontscan)) {
     my $action = $_;
-    ok( (open( IN, "$^X -I. $INC $action -MFoo -e 'Foo::empty()' 2>&1 |" )),
+    ok( (open( IN, qq{$^X -I. $INC $action -MFoo -e "Foo::empty()" 2>&1 |} )),
      "Open trace store load $action" );
     like( join( '',<IN> ),
     qr/load: store Foo::ondemand, line \d+ \(offset \d+, \d+ bytes\)
@@ -113,7 +113,7 @@ foreach (qw(-Mload=now),'env') {
         $action = '';
     }
 
-    ok( (open( IN, "$^X -I. $INC $action -MFoo -e 'Foo::empty()' 2>&1 |" )),
+    ok( (open( IN, qq{$^X -I. $INC $action -MFoo -e "Foo::empty()" 2>&1 |} )),
      "Open trace store load $action" );
     like( join( '',<IN> ),
     qr/load: now Foo, line \d+ \(offset \d+, onwards\)

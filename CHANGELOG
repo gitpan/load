@@ -1,3 +1,8 @@
+0.09	17 September 2003
+	Frank Tolstrup pointed out that many of the tests wouldn't run under
+	Windows because of quoting issues.  Adapted the test so that would
+	not be an issue anymore.  Hope this is the last one of today ;-)
+
 0.08	17 September 2003
 	Indeed, it is one of those days.  Added some more tests to make sure
 	that subroutines are indeed loaded on demand.
