@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.13';
+$VERSION  = '0.14';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -596,6 +596,10 @@ In that case, the inheritance will cause the AUTOLOAD subroutine of the base
 class to be used, thereby accessing the "load" pragma automagically (and hence
 the naming of the keyword of course).  See also the L<autoload> keyword to
 have the module use the generic AUTOLOAD subroutine.
+
+=head1 REQUIRED MODULES
+
+ (none)
 
 =head1 DIFFERENCES WITH SIMILAR MODULES
 

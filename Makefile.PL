@@ -1,5 +1,6 @@
 require 5.000;
 use ExtUtils::MakeMaker;
+eval "use Devel::Required";
 
 WriteMakefile (
  NAME		=> "load",
