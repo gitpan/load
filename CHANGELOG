@@ -1,3 +1,9 @@
+0.13	12 November 2003
+	Perl 5.8.2 does not handle empty subroutines (sub foo {}) very well.
+	In some cases, it degfaults.  This happened in the test-suite.
+	Test-suite has been adapted (that really is the only change, apart
+	from the version).
+
 0.12	29 September 2003
 	Added support for register additional "use" modules for specific
 	packages (e.g. when subroutines need to be handled by a source

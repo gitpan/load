@@ -32,7 +32,7 @@ use load;
 sub always { print "always \$VERSION" }
 __END__
 sub ondemand { print "ondemand \$VERSION" }
-sub empty {}
+sub empty { undef }
 EOD
 ok( (close OUT),"Close the dummy module" );
 
@@ -107,7 +107,7 @@ $/,"Check trace ondemand $action" );
 load: store Foo::empty, line \d+ \(offset \d+, \d+ bytes\)
 load: ondemand Foo::empty, line \d+ \(offset \d+, \d+ bytes\)
 $/,"Check trace ondemand $action" );
-        ok( (close IN),"Close trace ondemand $action" );
+        ok( (close IN),"Close trace ondemand $action: $!" );
     }
 
     foreach (qw(-Mload=now),'env') {
