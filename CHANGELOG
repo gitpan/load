@@ -1,3 +1,11 @@
+0.03	1 October 2002
+	Changed using of lexical file handles to globs, to ensure compatibility
+	with earlier versions of Perl.
+
+	Fixed problem with running with warnings (caused by UNIVERSAL::can
+	redefine).  Removed use strict and other stuff to make this module
+	yet leaner and meaner.
+
 0.02	30 September 2002
 	Now hijacks UNIVERSAL::can so that ->can does the right thing for
 	subroutines that have not been loaded yet.  As a side effect, this
