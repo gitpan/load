@@ -1,8 +1,9 @@
-MANIFEST
-CHANGELOG
-README
-TODO
-VERSION
 Makefile.PL
+README
+CHANGES
 lib/load.pm
-t/load.t
+t/01_load.t
+t/toload/A.pm
+t/toload/a.pl
+t/toload/c.pm
+t/toload/d
