@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.14';
+$VERSION  = '0.15';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -25,6 +25,19 @@ BEGIN {
     $now   = $ENV{'LOAD_NOW'} || 0;   # environment var undocumented for now
     $trace = $ENV{'LOAD_TRACE'} || 0; # also undocumented for now
 
+#  If there seems to be a version for "ifdef" loaded
+#   Die now if it is too old
+#   Set compile time flag for availability of "ifdef.pm"
+#  Else (no "ifdef" loaded)
+#   Set compile time flag for non-availability of "ifdef.pm"
+
+    if (defined $ifdef::VERSION) {
+        die "Must have 'ifdef' version 0.06 or higher to handle on demand loading\n" if $ifdef::VERSION < 0.06;
+        *IFDEF = sub () { 1 };
+    } else {
+        *IFDEF = sub () { 0 };
+    }
+
 #  If we're supposed to trace
 #   Create the subroutine for showing the trace
 
@@ -36,17 +49,17 @@ sub _trace {
 } #_trace
 EOD
     }
+
+#  Allow for dirty tricks
+#  Save current code ref of UNIVERSAL::can (will continue inside closure)
+#  Replace it with something that will also check on demand subroutines
+
+    no warnings 'redefine';
+    my $can = \&UNIVERSAL::can;
+    *UNIVERSAL::can = sub {
+        &{$can}( @_ ) || (ref( $_[0] ) ? undef : _can( @_ ))
+    };
 } #BEGIN
-
-# Allow for dirty tricks
-# Save current code ref of UNIVERSAL::can (will continue to live inside closure)
-# Replace it with something that will also check on demand subroutines
-
-{
- no warnings 'redefine';
- my $can = \&UNIVERSAL::can;
- *UNIVERSAL::can = sub { &{$can}( @_ ) || (ref( $_[0] ) ? undef : _can( @_ )) };
-}
 
 # Hash with modules that should be used extra, keyed to package
 
@@ -174,11 +187,13 @@ sub _scan {
 
 # Obtain the module
 # Obtain the load now flag
+# Make sure $_ is localized properly
 # Make sure we won't clobber sensitive system vars
 
     my $module = shift;
     my $loadnow = defined( $_[0] ) ? shift : $now;
-    local( $_,$!,$@ );
+    local $_ = \my $foo;
+    local( $!,$@ );
 
 # Obtain the filename, die if failed
 # Attempt to open the file for reading, die if failed
@@ -194,12 +209,15 @@ sub _scan {
 # Initialize line number
 # Initialize the within pod flag
 # Initialize the package name we're working for
+# Make sure "ifdef" starts with a clean slate if needed
 
     my $line = 0;
     my $pod = 0;
     my $package = '';
+    &ifdef::reset if IFDEF; # should get optimized away if not needed
 
 # While there are lines to be read
+#  Do whatever conversions are needed
 #  Increment line number
 #  Reloop if a pod line, setting flag right on the fly
 #  Reloop now if in pod or a comment line
@@ -209,6 +227,7 @@ sub _scan {
 #  Set the package (it's the first one)
 
     while (<VERSION>) {
+        &ifdef::oneline if IFDEF; # should get optimized away if not needed
         $line++;
         $pod = !m#^=cut#, next if m#^=\w#;
         next if $pod or m#^\s*\##;
@@ -237,18 +256,20 @@ sub _scan {
         _trace( "now $module, line $endline (offset $endstart, onwards)" )
          if $trace;
 
+#  Create the package prelude
 #  Enable slurp mode;
 #  Obtain the source in $1 so that we can eval this under taint
-#  Eval the source code
+#  Eval the source code, possibly processing through 'ifdef.pm"
 #  Die now if failed
 
-        local $/;
-        <VERSION> =~ m#^(.*)$#s;
-        eval <<EOD.$1;
+        my $prelude = <<EOD;
 package $module;
 no warnings;
 #line $endline "$file (loaded now from offset $endstart)"
 EOD
+        local $/;
+        <VERSION> =~ m#^(.*)$#s;
+        eval (IFDEF ? ifdef::process( $prelude.$1 ) : $prelude.$1);
         die "Error evaluating source: $@" if $@;
 
 # Else (we're to load everything ondemand)
@@ -262,12 +283,14 @@ EOD
         my $subline;
 
 #  While there are lines to be read
+#   Do any conversions that are needed
 #   Increment line number
 #   Reloop if a pod line, setting flag right on the fly
 #   Reloop now if in pod or a comment line
 #   Outloop now if we hit the actual documentation
 
         while (<VERSION>) {
+            &ifdef::oneline if IFDEF; # should get optimized away if not needed
             $line++;
             $pod = !m#^=cut#, next if m#^=\w#;
             next if $pod or m#^\s*\##;
@@ -322,9 +345,11 @@ sub _filename {
 # Convert the ::'s to /'s
 # Return whatever is available for that
 
-    my $key = shift;
-    $key =~ s#::#/#g;
-    $INC{"$key.pm"};
+    (my $key = $_[0]) =~ s#::#/#g;
+    my $filename = $INC{"$key.pm"};
+    return $filename unless ref $filename;
+    $filename = $filename->( "$key.pm" );
+    $filename;
 } #_filename
 
 #---------------------------------------------------------------------------
@@ -407,13 +432,15 @@ EOD
     close VERSION;
 
 # Create an untainted version of the source code
-# Make the stuff known to the system
+# Make sure "ifdef" starts with a clean slate
+# Make the stuff known to the system, possiblt processing througth "ifdef"
 # Die now if failed
 # Remove the info of this sub (it's not needed anymore)
 # Return the code reference to what we just loaded
 
     $source =~ m#^(.*)$#s;
-    eval $1;
+    &ifdef::reset if IFDEF; # should get optimized away if not needed
+    eval (IFDEF ? ifdef::process( $1 ) : $1);
     die "load: $@" if $@;
     delete $load::AUTOLOAD{$module,$sub};
     return \&{$module.'::'.$sub};

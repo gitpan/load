@@ -5,7 +5,19 @@ BEGIN {				# Magic Perl CORE pragma
     }
 }
 
-use Test::More tests => 5 + (2 * ((5*24) + 2*((3*3) + (3*3) + (2*3)))) + 1;
+my @extra;
+BEGIN {
+    eval { require ifdef };
+    if ($@) {
+        @extra = ('');
+    } else {
+        shift @INC;
+        $ENV{IFDEF_DIFF} = 0;
+        @extra = ('','-Mifdef ');
+    }
+} #BEGIN
+
+use Test::More tests => 5 + @extra * (2 * ((5*24) + 2*((3*3) + (3*3) + (2*3)))) + 1;
 use strict;
 BEGIN { eval {require warnings} or do {$INC{'warnings.pm'} = ''} } #BEGIN
 use warnings;
@@ -29,12 +41,39 @@ ok( (print OUT <<EOD),"Write the dummy module" );
 package $module;
 use load;
 \$VERSION = '$load::VERSION';
-sub always { print "always \$VERSION" }
+sub always {
+    print "always \$VERSION";
+}
+
+=begin DEBUGGING
+
+sub debugging_only {
+    print "debugging_only \$VERSION";
+}
+
+=cut
+
+1;
+
 __END__
-sub ondemand { print "ondemand \$VERSION" }
-sub empty { undef }
+sub ondemand {
+    print "ondemand \$VERSION";
+}
+sub empty {
+    undef;
+}
+
+=begin DEBUGGING
+
+sub ondemand_debugging_only {
+    print "ondemand_debugging_only \$VERSION";
+}
+
+=cut
 EOD
 ok( (close OUT),"Close the dummy module" );
+
+foreach my $extra (@extra) {
 
 foreach ('','-T ') {
     $INC = "$_$INC";
@@ -50,26 +89,26 @@ foreach ('','-T ') {
         }
 
         ok( (open( IN,
-         qq{$^X -I. $INC $action -MFoo -e "${module}::always()" |} )),
+         qq{$^X -I. $INC $extra$action -MFoo -e "${module}::always()" |} )),
           "Open check always on $action" );
         is( scalar <IN>,$always,"Check always with $action" );
         ok( (close IN),"Close check always with $action" );
 
         ok( (open( IN,
-         qq{$^X -I. $INC $action -MFoo -e "${module}::ondemand()" |} )),
+         qq{$^X -I. $INC $extra$action -MFoo -e "${module}::ondemand()" |} )),
           "Open check ondemand with $action" );
-        is( scalar <IN>,$ondemand,"Check ondemand with $action" );
+        is( scalar <IN>,$ondemand,"Check ondemand with $action" ) or die;
         ok( (close IN),"Close check ondemand with $action" );
 
         foreach (qw(always ondemand)) {
             ok( (open( IN,
-             qq{$^X -I. $INC $action -MFoo -e "print exists $bs\$Foo::{$_}"|})),
+             qq{$^X -I. $INC $extra$action -MFoo -e "print exists $bs\$Foo::{$_}"|})),
               "Open check exists $_ with $action" );
             is( scalar <IN>,'1',"Check exists $_ with $action" );
             ok( (close IN),"Close check exists $_ with $action" );
 
             ok( (open( IN,
-             qq{$^X -I. $INC $action -MFoo -e "print Foo->can($_)" |} )),
+             qq{$^X -I. $INC $extra$action -MFoo -e "print Foo->can($_)" |} )),
               "Open check Foo->can( $_ ) with $action" );
             ok( (<IN> =~ m#^CODE#),"Check Foo->can( $_ ) with $action" );
             ok( (close IN),"Close check Foo->can( $_ ) with $action" );
@@ -77,7 +116,7 @@ foreach ('','-T ') {
 
         foreach ("exists $bs\$Foo::{bar}","Foo->can(bar)") {
             ok( (open( IN,
-             qq{$^X -I. $INC $action -MFoo -e "$_" |} )),
+             qq{$^X -I. $INC $extra$action -MFoo -e "$_" |} )),
               "Open check $_ with $action" );
             ok( !defined <IN>,"Check $_ with $action" );
             ok( (close IN),"Close check $_ bar with $action" );
@@ -89,7 +128,7 @@ foreach ('','-T ') {
 
     foreach ('',qw(-Mload=ondemand -Mload=dontscan)) {
         my $action = $_;
-        ok( (open( IN, qq{$^X -I. $INC $action -MFoo -e "" 2>&1 |} )),
+        ok( (open( IN, qq{$^X -I. $INC $extra$action -MFoo -e "" 2>&1 |} )),
          "Open trace store $action" );
         like( join( '',<IN> ),
         qr/load: store Foo::ondemand, line \d+ \(offset \d+, \d+ bytes\)
@@ -100,7 +139,7 @@ $/,"Check trace ondemand $action" );
 
     foreach ('',qw(-Mload=ondemand -Mload=dontscan)) {
         my $action = $_;
-        ok( (open( IN, qq{$^X -I. $INC $action -MFoo -e "Foo::empty()" 2>&1|})),
+        ok( (open( IN, qq{$^X -I. $INC $extra$action -MFoo -e "Foo::empty()" 2>&1|})),
          "Open trace store load $action" );
         like( join( '',<IN> ),
         qr/load: store Foo::ondemand, line \d+ \(offset \d+, \d+ bytes\)
@@ -117,7 +156,7 @@ $/,"Check trace ondemand $action" );
             $action = '';
         }
 
-        ok( (open( IN, qq{$^X -I. $INC $action -MFoo -e "Foo::empty()" 2>&1|})),
+        ok( (open( IN, qq{$^X -I. $INC $extra$action -MFoo -e "Foo::empty()" 2>&1|})),
          "Open trace store load $action" );
         like( join( '',<IN> ),
         qr/load: now Foo, line \d+ \(offset \d+, onwards\)
@@ -135,7 +174,7 @@ $/,"Check trace now $action" );
 
         foreach ('',qw(-Mload=ondemand -Mload=dontscan)) {
             my $action = $_;
-            ok( (open( IN, qq{$^X -I. $INC -Mthreads $action -MFoo -e "" 2>&1 |} )),
+            ok( (open( IN, qq{$^X -I. $INC -Mthreads $extra$action -MFoo -e "" 2>&1 |} )),
              "Open trace store $action with threads" );
             like( join( '',<IN> ),
             qr/load \[0\]: store Foo::ondemand, line \d+ \(offset \d+, \d+ bytes\)
@@ -146,7 +185,7 @@ $/,"Check trace ondemand $action with threads" );
 
         foreach ('',qw(-Mload=ondemand -Mload=dontscan)) {
             my $action = $_;
-            ok((open( IN, qq{$^X -I. $INC -Mthreads $action -MFoo -e "Foo::empty()" 2>&1 |})),
+            ok((open( IN, qq{$^X -I. $INC -Mthreads $extra$action -MFoo -e "Foo::empty()" 2>&1 |})),
              "Open trace store load $action with threads" );
             like( join( '',<IN> ),
             qr/load \[0\]: store Foo::ondemand, line \d+ \(offset \d+, \d+ bytes\)
@@ -163,7 +202,7 @@ $/,"Check trace ondemand $action with threads" );
                 $action = '';
             }
 
-            ok( (open(IN, qq{$^X -I. $INC -Mthreads $action -MFoo -e "Foo::empty()" 2>&1 |})),
+            ok( (open(IN, qq{$^X -I. $INC -Mthreads $extra$action -MFoo -e "Foo::empty()" 2>&1 |})),
              "Open trace store load $action with threads" );
             like( join( '',<IN> ),
             qr/load \[0\]: now Foo, line \d+ \(offset \d+, onwards\)
@@ -173,4 +212,7 @@ $/,"Check trace now $action with threads" );
     }
 }
 
+}
+
 ok( (unlink $filepm),"Clean up dummy module" );
+1 while unlink $filepm; # multiversioned filesystems
