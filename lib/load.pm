@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.10';
+$VERSION  = '0.11';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -221,10 +221,14 @@ sub _scan {
         _trace( "now $module, line $endline (offset $endstart, onwards)" )
          if $trace;
 
-#  Enable slurp mode and make the stuff known to the system
+#  Enable slurp mode;
+#  Obtain the source in $1 so that we can eval this under taint
+#  Eval the source code
 #  Die now if failed
 
-        {local $/; eval <<EOD.<VERSION>};
+        local $/;
+        <VERSION> =~ m#^(.*)$#s;
+        eval <<EOD.$1;
 package $module;
 no warnings;
 #line $endline "$file (loaded now from offset $endstart)"
@@ -318,11 +322,13 @@ sub _store {
 
 # Show trace info if so requested
 # Make sure there is a stub
+# Die now if there was an error
 # Store the data
 
     _trace( "store $_[0]::$_[1], line $_[2] (offset $_[3], $_[4] bytes)" )
      if $trace;
     eval "package $_[0]; sub $_[1]";
+    die "Could not create stub: $@\n" if $@;
     $load::AUTOLOAD{$_[0],$_[1]} = pack( 'L3',$_[2],$_[3],$_[4] )
 } #_store
 
@@ -383,12 +389,14 @@ EOD
      if $read != $length;
     close VERSION;
 
+# Create an untainted version of the source code
 # Make the stuff known to the system
 # Die now if failed
 # Remove the info of this sub (it's not needed anymore)
 # Return the code reference to what we just loaded
 
-    eval $source;
+    $source =~ m#^(.*)$#s;
+    eval $1;
     die "load: $@" if $@;
     delete $load::AUTOLOAD{$module,$sub};
     return \&{$module.'::'.$sub};

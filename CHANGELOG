@@ -1,3 +1,9 @@
+0.11	26 September 2003
+	Turns out load.pm didn't work when taint was active.  And it silently
+	failed to boot.  This should now be fixed.  Added a todo to make tests
+	that will functioning under taint: activating taint in the tests
+	caused too many failures to allow checking in the allotted time..
+
 0.10	18 September 2003
 	Frank Tolstrup pointed out some test misses because of CRLF versus LF
 	issues on Windows.  These should now also be fixed.  Mention Frank
