@@ -70,12 +70,18 @@ This document describes version 0.01 of load, released Nov 24, 2002.
 
 	use load;
 
-	load Data::Dumper;
+        my $module = 'Data:Dumper';
 
-	load some/script.pl;
+	load Data::Dumper;      # loads that module
+        load 'Data::Dumper';    # ditto
+        load $module            # tritto
 
-	load thing;
+        my $script = 'some/script.pl'
+        load $script;
+        load 'some/script.pl';	# use quotes because of punctuations
 
+
+        load thing;             # try 'thing' first, then 'thing.pm'
 
 =head1 DESCRIPTION
 
@@ -118,6 +124,37 @@ we will try to find C<file.pm> in @INC.
 If both fail, we die with the respective error messages.
 
 =back
+
+=head1 NOTE
+
+There is one very important distinction between C<load> and C<require>:
+
+C<load> does not allow you to use the indirect object syntax, whereas
+C<require> does:
+
+    package MyPackage;
+    sub new { ... }
+
+    require Foo;
+
+    my $obj = new Foo(@args);
+
+will call
+
+    my $obj = Foo->new(@args);
+
+whereas
+
+    package MyPackage;
+    sub new { ... }
+
+    load Foo;
+    my $obj = new Foo(@args);
+
+will call
+
+    my $obj = MyPackage::new(@args);
+
 
 =head1 TODO
 
