@@ -1,9 +1,8 @@
-Makefile.PL
+MANIFEST
+CHANGELOG
 README
-CHANGES
+TODO
+VERSION
+Makefile.PL
 lib/load.pm
-t/01_load.t
-t/toload/A.pm
-t/toload/a.pl
-t/toload/c.pm
-t/toload/d
+t/load.t

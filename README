@@ -1,26 +1,17 @@
-This is the README file for load by Jos Boumans.
+README for load
 
-Please type "perldoc load" after installation to see the
-module usage information.
+The load.pm allows you to have Perl load subroutines only when necessary.
+It is primarily intended as a memory saving action, specifically for threaded
+Perl and mod_perl applications, but maybe useful in more traditional Perl
+applications as well.
 
-----------------------------------------------------------------------
+Copyright (c) 2002 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
+reserved.  This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
 
-* Installation
-
-load uses the standard perl module install process:
+The build is standard:
 
 perl Makefile.PL
 make
 make test
 make install
-
-----------------------------------------------------------------------
-
-* Copyright
-
-copyright (c) 2002 Jos Boumans E<lt>kane@cpan.orgE<gt>.
-All rights reserved.
-
-This library is free software;
-you may redistribute and/or modify it under the same
-terms as Perl itself.

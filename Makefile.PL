@@ -1,8 +1,12 @@
-#!/usr/bin/perl -w
+require 5.000;
 use ExtUtils::MakeMaker;
 
-WriteMakefile(
-    NAME            => 'load',
-    VERSION_FROM    => 'lib/load.pm',                # finds $VERSION
-    AUTHOR          => 'Jos Boumans (kane@cpan.org)',
+WriteMakefile (
+ NAME		=> "load",
+ ($[ >= 5.005) ?
+ (AUTHOR	=> 'Elizabeth Mattijsen (liz@dijkmat.nl)',
+  ABSTRACT	=> 'load - control when subroutines will be loaded') : (),
+ VERSION_FROM	=> 'lib/load.pm',
+ PREREQ_PM	=> {
+                   },
 );
