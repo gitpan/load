@@ -1,3 +1,21 @@
+0.02	30 September 2002
+	Now hijacks UNIVERSAL::can so that ->can does the right thing for
+	subroutines that have not been loaded yet.  As a side effect, this
+	loads the subroutine specified.  Added documentation to reflect that.
+
+	Localised $_, $! and $@ at several places just to make sure they
+	don't clobber anything on the outside.
+
+	Added support for line numbers and file name (swiped from AutoSplit
+	generated code), so that eval errors will give you more information.
+
+	Added check for DESTROY: apparently you get an infinite loop if you're
+	gotoing the DESTROY if it doesn't exist.  Now AUTOLOAD just returns
+	for DESTROY if it doesn't exist.
+
+	Fixed typo in _scan() which would trigger a loop if a second __END__
+	was encountered in the source of a module.
+
 0.01	29 September 2002
 	First version of load.pm, renamed from jit.pm after discussions on and
 	off p5p.

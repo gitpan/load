@@ -3,7 +3,7 @@ package load;
 # Make sure we have version info for this module
 # Make sure we do everything by the book from now on
 
-$VERSION  = '0.01';
+$VERSION  = '0.02';
 use strict;
 
 # The hash in which we keep where which package has its subroutines
@@ -13,6 +13,16 @@ use vars qw(%AUTOLOAD);
 # Flag indicating whether everything should be loaded immediately
 
 my $now = 0;
+
+# Allow for dirty tricks
+# Save current code ref of UNIVERSAL::can
+# Replace it with something that will also check on demand subroutines
+
+{
+ no strict 'refs';
+ my $can = \&UNIVERSAL::can;
+ *UNIVERSAL::can = sub { &{$can}( @_ ) || (ref( $_[0] ) ? undef : _can( @_ )) };
+}
 
 # Satisfy -require-
 
@@ -105,53 +115,25 @@ sub import {
 
 #---------------------------------------------------------------------------
 
-# internal subroutines
-
-#---------------------------------------------------------------------------
-
 sub AUTOLOAD {
 
 # Obtain the module and subroutine name
-# Scan the file if it wasn't done yet
-
-    my ($module,$sub) = ($1,$2) if $load::AUTOLOAD =~ m#^(.*)::(.*?)$#;
-    _scan( $module ) unless exists( $AUTOLOAD{$module} );
-
-# If we know about this subroutine
-#  Obtain the filename or die
-#  Open the file or die
-#  Seek to the right place or die
-
-    if (my ($start,$length) = _fetch( $module,$sub )) {
-        my $file = _filename( $module )
-         or die "Could not find file for '$module.pm'";
-        open( my $handle,"<$file" )
-         or die "Could not open file '$file' for '$module.pm': $!";
-        seek( $handle,$start,0 )
-         or die "Could not seek to $start for $module\::$sub";
-
-#  Initialize the source to be evalled
-#  Add the source of the subroutine to it and get number of bytes read
-#  Die now if we didn't get what we expected
-
-        my $source = "package $module;\n";
-        my $read = read( $handle,$source,$length,length($source) );
-        die "Error reading source: only read $read bytes instead of $length"
-         if $read != $length;
-
-#  Make the stuff known to the system
-#  Die now if failed
-#  Remove the info of this sub (it's not needed anymore)
-
-        {no strict; eval $source};
-        die "Error evaluating source: $@" if $@;
-        _delete( $module,$sub );
-    }
-
+# If the subroutine can be loaded
+# Elsif we requested DESTROY (and we don't know about it)
+#  Just return (gotoing it when it doesn't exist, will just bring us back here)
 # Go execute the routine (whether it exists or not)
 
+    my ($module,$sub) = ($1,$2) if $load::AUTOLOAD =~ m#^(.*)::(.*?)$#;
+    if (_can( $module,$sub )) {
+    } elsif ($sub eq 'DESTROY') {
+        return;
+    }
     goto &{$module.'::'.$sub};
 } #AUTOLOAD
+
+#---------------------------------------------------------------------------
+
+# internal subroutines
 
 #---------------------------------------------------------------------------
 #  IN: 1 module to scan (AAA::BBB)
@@ -161,9 +143,11 @@ sub _scan {
 
 # Obtain the module
 # Obtain the load now flag
+# Make sure we won't clobber sensitive system vars
 
     my $module = shift;
     my $loadnow = defined($_[0]) ? shift : $now;
+    local( $_,$!,$@ );
 
 # Obtain the filename, die if failed
 # Attempt to open the file for reading, die if failed
@@ -174,13 +158,16 @@ sub _scan {
     open( my $handle,"<$file" )
      or die "Could not open file '$file' for '$module': $!";
 
+# Initialize line number
 # Initialize the within pod flag
 # Initialize the package name we're working for
 
+    my $line = 0;
     my $pod = 0;
     my $package = '';
 
 # While there are lines to be read
+#  Increment line number
 #  Reloop if a pod line, setting flag right on the fly
 #  Reloop now if in pod or a comment line
 #  Outloop now if we found the good stuff
@@ -189,6 +176,7 @@ sub _scan {
 #  Set the package (it's the first one)
 
     while (<$handle>) {
+        $line++;
         $pod = !m#^=cut#, next if m#^=\w#;
         next if $pod or m#^\s*\##;
         last if m#^__END__#;
@@ -203,32 +191,49 @@ sub _scan {
     die "Could not find package name" unless $package;
     die "Found package $package inside '$file'" if $package ne $module;
 
+# Save the line after which __END__ sits
+# Save the offset of the first line after __END__
+
+    my $endline = $line+1;
+    my $endstart = tell( $handle );
+
 # If we're supposed to load now
 #  Initialize the source to be evaluated
 #  Enable slurp mode
 #  Read the rest of the file
+
+    if ($loadnow) {
+        my $source = <<EOD;
+package $module
+#line $endline "$file (loaded on demand from offset $endstart)"
+EOD
+	local( $/ );
+        $source .= <$handle>;
+
 #  Make the stuff known to the system
 #  Die now if failed
 
-    if ($loadnow) {
-        my $source = "package $module;\n";
-	local( $/ );
-        $source .= <$handle>;
         {no strict; eval $source};
         die "Error evaluating source: $@" if $@;
 
 # Else (we're to load everything ondemand)
 #  Initialize the start position
 #  Initialize the sub name being handled
-#  While there are lines to be read
-#   Reloop if a pod line, setting flag right on the fly
-#   Reloop now if in pod or a comment line
-#   Outloop now if we hit the actual documentation
+#  Initialize the line number of the sub being handled
 
     } else {
         my $start;
         my $sub = '';
+        my $subline;
+
+#  While there are lines to be read
+#   Increment line number
+#   Reloop if a pod line, setting flag right on the fly
+#   Reloop now if in pod or a comment line
+#   Outloop now if we hit the actual documentation
+
         while (<$handle>) {
+            $line++;
             $pod = !m#^=cut#, next if m#^=\w#;
             next if $pod or m#^\s*\##;
             last if m#^__END__#;
@@ -244,21 +249,24 @@ sub _scan {
 #   Store the information of the previous sub if there was one
 #   Set the name of this sub
 #   Die now if it is fully qualified sub
-#   Remember where this sub starts
+#   Remember where at which line number this sub starts
+#   Remember where at which offset this sub starts
 #  Store the information of the last sub if there was one
 
             my $seek = tell($handle) - length();
-            _store( $module,$sub,$start,$seek-$start ) if $sub;
+            _store( $module,$sub,$subline,$start,$seek-$start ) if $sub;
             $sub = $1;
             die "Cannot handle fully qualified subroutine '$sub'\n"
              if $sub =~ m#::#;
+	    $subline = $line;
             $start = $seek;
         }
         _store(
 	  $module,
 	  $sub,
+          $subline,
 	  $start,
-	  (defined() ? tell($handle) - lenght() : -s $handle) - $start
+	  (defined() ? tell($handle) - length() : -s $handle) - $start
 	) if $sub;
     }
 
@@ -287,31 +295,92 @@ sub _filename {
 #---------------------------------------------------------------------------
 #  IN: 1 module name
 #      2 subroutine name (not fully qualified)
-#      3 start position
-#      4 number of bytes to read
+#      3 line number where sub starts
+#      4 offset where sub starts
+#      5 number of bytes to read
 
 sub _store {
 
 # Make sure there is a stub
 # Store the data
 
-    eval "sub $_[0]\::$_[1];";
-    $AUTOLOAD{$_[0],$_[1]} = pack( 'L2',$_[2],$_[3] )
+    eval "package $_[0]; sub $_[1];";
+    $AUTOLOAD{$_[0],$_[1]} = pack( 'L3',$_[2],$_[3],$_[4] )
 } #_store
 
 #---------------------------------------------------------------------------
 #  IN: 1 module name
 #      2 subroutine name (not fully qualified)
-# OUT: 1 start position
-#      2 number of bytes to read
+# OUT: 1 line number where sub starts
+#      2 offset where sub starts
+#      3 number of bytes to read
 
-sub _fetch { unpack( 'L2',$AUTOLOAD{$_[0],$_[1]} ) } #_fetch
+sub _fetch { unpack( 'L3',$AUTOLOAD{$_[0],$_[1]} ) } #_fetch
 
 #---------------------------------------------------------------------------
 #  IN: 1 module name
 #      2 subroutine name (not fully qualified)
 
 sub _delete { delete( $AUTOLOAD{$_[0],$_[1]} ) } #_delete
+
+#---------------------------------------------------------------------------
+#  IN: 1 module to load subroutine from
+#      2 subroutine to load
+# OUT: 1 reference to subroutine (if exists and loaded, else undef)
+
+sub _can {
+
+# Obtain the module and subroutine name
+# Return now if trying for application (the real UNIVERSAL::can should do that)
+# Scan the file if it wasn't done yet
+# Obtain coordinates of subroutine
+# Return now if not known
+
+    my ($module,$sub) = @_;
+    return if $module eq 'main';
+    _scan( $module ) unless exists( $AUTOLOAD{$module} );
+    my ($subline,$start,$length) = _fetch( $module,$sub );
+    return unless $start;
+
+# Make sure we don't clobber sensitive system variables
+# Obtain the filename or die
+# Open the file or die
+# Seek to the right place or die
+
+    local( $!,$@ );
+    my $file = _filename( $module )
+     or die "Could not find file for '$module.pm'";
+    open( my $handle,"<$file" )
+     or die "Could not open file '$file' for '$module.pm': $!";
+    seek( $handle,$start,0 )
+     or die "Could not seek to $start for $module\::$sub";
+
+# Initialize the source to be evalled
+# Add the source of the subroutine to it and get number of bytes read
+# Die now if we didn't get what we expected
+
+    my $source = <<EOD;
+package $module;
+#line $subline "$file (loaded on demand from offset $start for $length bytes)
+EOD
+    my $read = read( $handle,$source,$length,length($source) );
+    die "Error reading source: only read $read bytes instead of $length"
+     if $read != $length;
+
+# Make the stuff known to the system
+# Die now if failed
+# Remove the info of this sub (it's not needed anymore)
+
+    {no strict; eval $source};
+    die "load: $@" if $@;
+    _delete( $module,$sub );
+
+# Allow for variable references
+# Return the code reference to what we just loaded
+
+    no strict 'refs';
+    return \&{$module.'::'.$sub};
+} #_can
 
 #---------------------------------------------------------------------------
 
@@ -526,6 +595,20 @@ requested.  It also adds complexities if your module needs to use the <DATA>
 handle.  So the "load" pragma gives more flexibility and fewer development
 complexities.  And of course, an application can force all subroutines to be
 loaded at compile time when needed with the "load" pragma.
+
+=head1 UNIVERSAL::can
+
+To ensure the functioning of the ->can class method and &UNIVERSAL::can,
+the "load" pragma hijacks the standard UNIVERSAL::can routine so that it
+can check whether the subroutine/method that you want to check for, actually
+exists and have a code reference to it returned.  This has a side effect that
+you the subroutine checked for, is loaded.  You can use this side effect to
+load subroutines without calling them.
+
+ Your::Module->can( 'loadthisnow' );
+
+will load the subroutine "loadthisnow" of the Your::Module module without
+actually calling it.
 
 =head1 CAVEATS
 
