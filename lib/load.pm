@@ -3,7 +3,7 @@ package load;
 # Make sure we have version info for this module
 # Flag indicating whether everything should be loaded immediately
 
-$VERSION  = '0.03';
+$VERSION  = '0.04';
 my $now = 0;
 
 # Allow for dirty tricks
@@ -296,7 +296,7 @@ sub _can {
     my ($module,$sub) = @_;
     return if $module eq 'main';
     _scan( $module ) unless exists( $AUTOLOAD{$module} );
-    my ($subline,$start,$length) = unpack( 'L3',$AUTOLOAD{$module,$sub} );
+    my ($subline,$start,$length) = unpack( 'L3',$AUTOLOAD{$module,$sub} || '' );
     return unless $start;
 
 # Make sure we don't clobber sensitive system variables

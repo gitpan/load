@@ -1,3 +1,7 @@
+0.04	21 October 2002
+	Fixed small problem when running with warnings and attempting to access
+	non-existing subroutine.  Spotted by Lars Fenneberg.
+
 0.03	1 October 2002
 	Changed using of lexical file handles to globs, to ensure compatibility
 	with earlier versions of Perl.
