@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.09';
+$VERSION  = '0.10';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -24,6 +24,18 @@ BEGIN {
     eval {require warnings} or do {$INC{'warnings.pm'} = ''};
     $now   = $ENV{'LOAD_NOW'} || 0;   # environment var undocumented for now
     $trace = $ENV{'LOAD_TRACE'} || 0; # also undocumented for now
+
+#  If we're supposed to trace
+#   Create the subroutine for showing the trace
+
+    if ($trace) {
+        eval <<'EOD'; # only way to ensure it isn't there when we're not tracing
+sub _trace {
+    my $tid = $threads::VERSION ? ' ['.threads->tid.']' : '';
+    warn "load$tid: ",$_[0],$/;
+} #_trace
+EOD
+    }
 } #BEGIN
 
 # Allow for dirty tricks
@@ -154,11 +166,14 @@ sub _scan {
 
 # Obtain the filename, die if failed
 # Attempt to open the file for reading, die if failed
+# Set binmode just to make sure
 
     my $file = _filename( $module )
      or die "Could not find file for '$module'";
     open( VERSION,"<$file" ) # use VERSION as glob to save memory
      or die "Could not open file '$file' for '$module': $!";
+    binmode VERSION # needed for Windows systems, apparently
+     or die "Could not set binmode on '$file': $!";
 
 # Initialize line number
 # Initialize the within pod flag
@@ -203,7 +218,7 @@ sub _scan {
 #  Show trace info if requested
 
     if ($loadnow) {
-        warn "load: now $module, line $endline (offset $endstart, onwards)\n"
+        _trace( "now $module, line $endline (offset $endstart, onwards)" )
          if $trace;
 
 #  Enable slurp mode and make the stuff known to the system
@@ -305,9 +320,9 @@ sub _store {
 # Make sure there is a stub
 # Store the data
 
-    warn "load: store $_[0]::$_[1], line $_[2] (offset $_[3], $_[4] bytes)\n"
+    _trace( "store $_[0]::$_[1], line $_[2] (offset $_[3], $_[4] bytes)" )
      if $trace;
-    eval "package $_[0]; sub $_[1];";
+    eval "package $_[0]; sub $_[1]";
     $load::AUTOLOAD{$_[0],$_[1]} = pack( 'L3',$_[2],$_[3],$_[4] )
 } #_store
 
@@ -336,6 +351,7 @@ sub _can {
 # Make sure we don't clobber sensitive system variables
 # Obtain the filename or die
 # Open the file or die
+# Set binmode just to make sure
 # Seek to the right place or die
 
     local( $!,$@ );
@@ -343,13 +359,15 @@ sub _can {
      or die "Could not find file for '$module.pm'";
     open( VERSION,"<$file" ) # use VERSION glob to conserve memory
      or die "Could not open file '$file' for '$module.pm': $!";
+    binmode VERSION # needed for Windows systems, apparently
+     or die "Could not set binmode on '$file': $!";
     seek( VERSION,$start,0 )
      or die "Could not seek to $start for $module\::$sub";
 
 # Show trace info if so requested
 # Initialize the source to be evalled
 
-    warn "load: ondemand ${module}::$sub, line $subline (offset $start, $length bytes)\n" if $trace;
+    _trace( "ondemand ${module}::$sub, line $subline (offset $start, $length bytes)" ) if $trace;
     my $source = <<EOD;
 package $module;
 no warnings;
@@ -704,6 +722,10 @@ having it skip __END__ when the global "now" flag is set.
 
 Possibly we should use the <DATA> handle from a module if there is one, or dup
 it and use that, rather than opening the file again.
+
+=head1 ACKNOWLEDGEMENTS
+
+Frank Tolstrup for helping ironing out all of the Windows related issues.
 
 =head1 AUTHOR
 

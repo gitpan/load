@@ -1,3 +1,25 @@
+0.10	18 September 2003
+	Frank Tolstrup pointed out some test misses because of CRLF versus LF
+	issues on Windows.  These should now also be fixed.  Mention Frank
+	in the new ACKNOWLEDGEMENTS section of load.
+
+	Added thread indicator to trace if threads are used.  This should
+	facilitate debugging of the Thread::xxx modules.  Added tests for
+	it as well.  For the trace to properly detect threads, the threads
+	module must have been loaded prior to loading load.pm.
+
+	17 September 2003
+	Hmmm... I may be taking the "release soon, release often" too
+	literally.  Anyway, Frank Tolstrup's output of the failing test-suite
+	under Windows, pointed to a possible seek() problem under Windows.
+	Added a binmode() in case the source-file is opened again for on-demand
+	loading of a subroutine.  And the tests with $Foo::{} also failed
+	under Windows: they shouldn't anymore.
+
+	Installed experimental trace possibility that is activated by setting
+	the environment variable "LOAD_TRACE" to a true value.  This is still
+	experimental so therefore only documented here.
+
 0.09	17 September 2003
 	Frank Tolstrup pointed out that many of the tests wouldn't run under
 	Windows because of quoting issues.  Adapted the test so that would
