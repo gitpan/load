@@ -1,3 +1,16 @@
+0.17	9 July 2005
+	Finished AutoLoader emulation mode and adapted testing accordingly.
+	Fixed some test problems if ifdef.pm is not installed.  Changes tests
+	so that the first failure will die with a dump so that specific
+	problems can be worked on more precisely.
+
+	Verified load.pm works on Perl 5.8.7.
+
+	30 September 2004
+	Added initial support AutoLoader emulation mode.
+
+	Verified load.pm will work on Perl 5.8.5.
+
 0.16	15 March 2004
 	Changed tracing calls so that they get optimized away if tracing is
 	not active.
@@ -89,7 +102,7 @@
 	whether ondemand subs can be called and whether or not they exist
 	and can be can()ned.
 
-	Argh.  A type caused the "now" functionality to completely broken.
+	Argh.  A typo caused the "now" functionality to completely broken.
 	This is now fixed.  Problem was introduced in version 0.02.
 
 	Added optional support for strict and warnings in the source.

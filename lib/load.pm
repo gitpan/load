@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.16';
+$VERSION  = '0.17';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -94,14 +94,14 @@ sub register { $use{$_[1]} = ($use{$_[1]} || '')."use $_[2];" } #register
 
 sub import {
 
-# Lose the class
+# Obtain the class (so we can check whether load or AutoLoader usage)
 # Obtain the module name
+# Initialize the context flag
 
-    shift;
-    my $module = caller();
+    my $class  = shift;
+    my ($module,$filename) = caller();
 
 # If there were any parameters specified
-#  Initialize the context flag
 #  Initialize the autoload export flag
 #  Initialize the scan flag
 #  Create local copy of load now flag
@@ -113,22 +113,64 @@ sub import {
         my $thisnow = $now;
 
 #  For all of the parameters specified
-#   Fetch action to be done, die if unknown keyword and execute action
+#   If we want to load everything now
+#    Set flags accordingly
 
         foreach (@_) {
             if ($_ eq 'now') {
                 ($inmain ? $now = $thisnow : $thisnow) = $scan = 1;
+
+#   Elsif we want to load ondemand
+#    Set flags accordingly
+
             } elsif ($_ eq 'ondemand') {
                 ($inmain ? $now = $thisnow : $thisnow) = 0;
                 $scan = 1;
-            } elsif ($_ eq 'autoload') {
-                die "Can not autoload in main namespace" if $inmain;
+
+#   Elseif we want to export AUTOLOAD sub (AUTOLOAD = AutoLoader compatible)
+#    Die now if we're called from a script
+#    Mark to export AUTOLOAD
+
+            } elsif (m#^(?:autoload|AUTOLOAD)$#) {
+                die "Can not $_ in main namespace" if $inmain;
                 $autoload = 1;
+
+#   Elseif we don't want to scan now
+#    Set flags accordingly
+
             } elsif ($_ eq 'dontscan') {
                 ($inmain ? $now = $thisnow : $thisnow) = $scan = 0;
+
+#   Elseif we want the AUTOLOAD to be inherited
+#    Die now if we're called from a script
+#    Mark to _not_ export AUTOLOAD
+
             } elsif ($_ eq 'inherit') {
                 die "Can not inherit in main namespace" if $inmain;
                 $autoload = 0;
+
+#   Elseif we want to enable AutoLoader mode
+#    Die now if activating AutoLoader mode from a module
+
+            } elsif ($_ eq 'AutoLoader') {
+                die "Can only activate AutoLoader emulation mode from script"
+                 unless $inmain;
+
+#    If we didn't emulate AutoLoader before
+#     Set the import routine of AutoLoader to this one
+#     Set the AUTOLOAD routine of AutoLoader to load's one
+#     Mark AutoLoader.pm as loaded so that it will not actually get loaded
+
+                if (!$INC{'AutoLoader.pm'} or
+                     $INC{'AutoLoader.pm'} ne $INC{__PACKAGE__.'.pm'}) {
+                    *AutoLoader::import = \&import;
+                    *AutoLoader::AUTOLOAD = \&AUTOLOAD;
+                    $INC{'AutoLoader.pm'} = $INC{__PACKAGE__.'.pm'};
+                }
+
+#   Else
+#    Die now indicating unknown parameter
+
             } else {
                 die "Don't know how to handle $_";
             }
@@ -148,18 +190,21 @@ sub import {
 # Elseif called from a script
 #  Die indicating that doesn't make any sense
 
-    } elsif ($module eq 'main') {
-       die "Does not make sense to just 'use load' from your script";
+    } elsif ($module eq 'main' and $filename ne '-e') {
+       die "Does not make sense to just 'use $class;' from your script";
 
 # Else (no parameters specified)
 #  Scan the source
-#  Allow for variable reference stuff
-#  And export the AUTOLOAD subroutine
+#  If we're called for "load" (which exports by default)
+#   Allow for variable reference stuff
+#   And export the AUTOLOAD subroutine
 
     } else {
         _scan( $module );
-        no strict 'refs';
-        *{$module.'::AUTOLOAD'} = \&AUTOLOAD;
+        if ($class eq __PACKAGE__) {
+            no strict 'refs';
+            *{$module.'::AUTOLOAD'} = \&AUTOLOAD;
+        }
     }
 } #import
 
@@ -399,7 +444,7 @@ sub _can {
 # Obtain coordinates of subroutine
 # Return now if not known
 
-    _scan( $module ) unless exists( $load::AUTOLOAD{$module} );
+    _scan( $module ) unless exists $load::AUTOLOAD{$module};
     my ($subline,$start,$length) =
      unpack( 'L3',$load::AUTOLOAD{$module,$sub} || '' );
     return unless $start;
@@ -634,6 +679,40 @@ class to be used, thereby accessing the "load" pragma automagically (and hence
 the naming of the keyword of course).  See also the L<autoload> keyword to
 have the module use the generic AUTOLOAD subroutine.
 
+=head2 AutoLoader
+
+The "AutoLoader" keyword enables AutoLoader emulation mode.  It basically
+takes over the functionality of the AutoLoader module (which is part of
+Perl's core, and which is used by many of Perl's core modules).
+
+Use of AutoLoader emulation mode usually only makes sense in a mod_perl
+prefork environment (in combination with the "now" keyword), or a threaded
+Perl environment.
+
+It basically adds the flexibility of subroutine loading options of the "load"
+pragma to the existing codebase of Perl's core and CPAN modules.  It is
+typically invoked from the command line:
+
+ perl -Mload=AutoLoader
+
+or in a mod_perl configuration:
+
+ <Perl>
+ use load qw(AutoLoader now); # as early as possible
+                              # rest of modules to be loaded
+ </Perl>
+
+The AutoLoader emulation mode has the further advantage for modules being
+developed with AutoLoader, as it is possible to run the module before having
+to have installed the module (which is normally a requirement with using
+AutoLoader).
+
+Please note that AutoLoader emulation will only work properly for any modules
+loaded B<after> the "load" module is loaded.  It is therefore important to
+activate the AutoLoader as soon as possible, before B<any> other modules have
+been loaded.  Of particular interest in this respect are the L<threads> and
+the L<ifdef> modules.
+
 =head1 REQUIRED MODULES
 
  (none)
@@ -663,6 +742,12 @@ to reside in the operating system's buffers already.
 
 As an extra feature, the "load" pragma allows an application to force all
 subroutines to be loaded at compile time, which is not possible with AutoLoader.
+
+The "AutoLoader emulation" mode causes AutoLoader to be replaced by "load",
+increasing further flexibility in loading options (which can be particularly
+important in the L<"mod_perl prefork"> situation) and ease of use during
+development of modules using AutoLoader (as you don't need to install the
+module before you can test it).
 
 =head2 SelfLoader
 
@@ -746,7 +831,7 @@ functionality offered by the "load" pragma, you can use the above construct.
 
 =head2 mod_perl prefork
 
- use load 'now';
+ use load qw(AutoLoader now);
  use Your::Module;
 
 In pre-fork mod_perl applications (the default mod_perl applications before
@@ -759,6 +844,12 @@ situation, will cause otherwise shared memory to become unshared.  Thereby
 increasing the overall memory usage, because the amount that becomes unshared
 is typically a lot more than the extra memory used by the subroutine (which
 is caused by fragmentation of allocated memory).
+
+The B<AutoLoader> emulation mode causes all modules that use C<AutoLoader> to
+be handled by C<load>.  In combination with the "now" mode, this means that
+many system modules will also be loaded completely at server startup (causing
+a grow in initial use of memory, but sharing more memory means that overall
+memory usage is significantly reduced.
 
 =head2 threaded applications and mod_perl worker
 
@@ -773,6 +864,10 @@ forcing them to become unshared as far as the operating system is concerned).
 Benchmarks have shown that the overhead of the extra CPU is easily offset by
 the reduction of the amount of data that needs to be copied (and processed)
 when a thread is created.
+
+A little additional memory reduction can be achieved with the L<AutoLoader>
+emulation mode: this will prevent the AutoLoader module to be loaded (but
+have its functionality handled by the "load" pragma).
 
 =head1 SOURCE FILTERS
 
@@ -808,6 +903,8 @@ having it skip __END__ when the global "now" flag is set.
 Possibly we should use the <DATA> handle from a module if there is one, or dup
 it and use that, rather than opening the file again.
 
+Add L<SelfLoader> emulation mode.
+
 =head1 MODULE RATING
 
 If you want to find out how this module is appreciated by other people, please
@@ -828,12 +925,12 @@ Please report bugs to <perlbugs@dijkmat.nl>.
 
 =head1 COPYRIGHT
 
-Copyright (c) 2002-2004 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
+Copyright (c) 2002-2005 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
 reserved.  This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<AutoLoader>, L<SelfLoader>.
+L<AutoLoader>, L<SelfLoader>, L<ifdef>, L<threads>.
 
 =cut
