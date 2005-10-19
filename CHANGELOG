@@ -1,3 +1,6 @@
+0.18	18 October 2005
+	Added fix for missing Kwalitee point for not using 'strict'
+
 0.17	9 July 2005
 	Finished AutoLoader emulation mode and adapted testing accordingly.
 	Fixed some test problems if ifdef.pm is not installed.  Changes tests
