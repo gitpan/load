@@ -2,14 +2,14 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.18';
+$VERSION  = '0.19';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
 # important being that strict bleeds into the string eval's that load.pm
 # is doing, causing compilation errors in all but the most simple modules.
-# If you _do_ want stricture as a developer of load.pm, simply activate the
-# line below here
+# If you _do_ want stricture as a developer of load.pm, simply de-activate
+# the lines of the BEGIN block below here
 #--------------------------------------------------------------------------
 BEGIN { # We're fooling the Kwalitee checker into thinking we're strict
 use strict;
@@ -527,6 +527,10 @@ load - control when subroutines will be loaded
 
   use load 'inherit';  # do NOT export AUTOLOAD handler to this namespace
 
+=head1 VERSION
+
+This documentation describes version 0.19.
+
 =head1 DESCRIPTION
 
 The "load" pragma allows a module developer to give the application developer
@@ -927,7 +931,7 @@ Please report bugs to <perlbugs@dijkmat.nl>.
 
 =head1 COPYRIGHT
 
-Copyright (c) 2002-2005 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
+Copyright (c) 2002-2007 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
 reserved.  This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 

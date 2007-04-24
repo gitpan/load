@@ -1,3 +1,9 @@
+0.19	24 April 2007
+	Fixed problem in test-suite that was long overseen because it would
+	work ok if load.pm was already installed (which it was on my dev
+	system).  Not sure whether this was internally introduced, or some
+	new feature of Test::More.
+
 0.18	18 October 2005
 	Added fix for missing Kwalitee point for not using 'strict'
 

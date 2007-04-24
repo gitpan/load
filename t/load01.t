@@ -37,6 +37,7 @@ use strict;
 BEGIN { eval {require warnings} or do {$INC{'warnings.pm'} = ''} } #BEGIN
 use warnings;
 
+use lib 'lib';
 BEGIN {use_ok( 'load','ondemand' )}
 
 can_ok( 'load',qw(
@@ -124,7 +125,7 @@ sub test {
                 }
 
                 ok( (open( IN,
-                 qq{$^X -I. $INC $extra$action -MFoo -e "${module}::always()" |} )),
+                 qq{$^X -I. -Ilib $INC $extra$action -MFoo -e "${module}::always()" |} )),
                   "Open check always on $action" );
                 is( scalar <IN>,$always,"Check always with $action" );
                 ok( (close IN),"Close check always with $action" );
