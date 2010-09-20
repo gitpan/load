@@ -2,7 +2,7 @@ package load;
 
 # Make sure we have version info for this module
 
-$VERSION  = '0.19';
+$VERSION  = '0.20';
 
 #--------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -97,11 +97,11 @@ sub register { $use{$_[1]} = ($use{$_[1]} || '')."use $_[2];" } #register
 sub import {
 
 # Obtain the class (so we can check whether load or AutoLoader usage)
-# Obtain the module name
+# Obtain caller info
 # Initialize the context flag
 
     my $class  = shift;
-    my ($module,$filename) = caller();
+    my ($module,undef,$lineno) = caller();
 
 # If there were any parameters specified
 #  Initialize the autoload export flag
@@ -189,11 +189,12 @@ sub import {
             *{$module.'::AUTOLOAD'} = \&AUTOLOAD if $autoload;
         }
 
-# Elseif called from a script
-#  Die indicating that doesn't make any sense
+# Elseif called from a script or from command line (no action from command line)
+#  Die indicating that doesn't make any sense if in a script
 
-    } elsif ($module eq 'main' and $filename ne '-e') {
-       die "Does not make sense to just 'use $class;' from your script";
+    } elsif ($module eq 'main') {
+       die "Does not make sense to just 'use $class;' from your script"
+         if $lineno;
 
 # Else (no parameters specified)
 #  Scan the source
@@ -529,7 +530,7 @@ load - control when subroutines will be loaded
 
 =head1 VERSION
 
-This documentation describes version 0.19.
+This documentation describes version 0.20.
 
 =head1 DESCRIPTION
 

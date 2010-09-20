@@ -1,3 +1,7 @@
+0.20	20 September 2010
+	Fixed problem that started to manifest itself with a slightly different
+	handling of localized $@, starting in perl 5.13.x.
+
 0.19	24 April 2007
 	Fixed problem in test-suite that was long overseen because it would
 	work ok if load.pm was already installed (which it was on my dev
