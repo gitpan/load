@@ -1,415 +1,353 @@
 package load;
 
-# Make sure we have version info for this module
+$VERSION= '0.21';
 
-$VERSION  = '0.20';
-
-#--------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
 # important being that strict bleeds into the string eval's that load.pm
 # is doing, causing compilation errors in all but the most simple modules.
 # If you _do_ want stricture as a developer of load.pm, simply de-activate
 # the lines of the BEGIN block below here
-#--------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 BEGIN { # We're fooling the Kwalitee checker into thinking we're strict
 use strict;
 }
 
-# Define loading now flag
-# Do this at compile time
-#  Make sure we have warnings or dummy warnings for older Perl's
-#  Set flag indicating whether everything should be loaded immediately
-
+# do this at compile time
 my $now;
 BEGIN {
-    eval {require warnings} or do {$INC{'warnings.pm'} = ''};
-    $now   = $ENV{'LOAD_NOW'} || 0;   # environment var undocumented for now
 
-#  If there seems to be a version for "ifdef" loaded
-#   Die now if it is too old
-#   Set compile time flag for availability of "ifdef.pm"
-#  Else (no "ifdef" loaded)
-#   Set compile time flag for non-availability of "ifdef.pm"
+    # make sure we have warnings or dummy warnings for older Perl's
+    eval { require warnings } or do { $INC{'warnings.pm'} = '' };
 
+    # set flag indicating whether everything should be loaded immediately
+    $now= $ENV{'LOAD_NOW'} || 0;   # environment var undocumented for now
+
+    # "ifdef" is loaded, can we use it?
     if (defined $ifdef::VERSION) {
-        die "Must have 'ifdef' version 0.07 or higher to handle on demand loading\n" if $ifdef::VERSION < 0.07;
-        *IFDEF = sub () { 1 };
-    } else {
-        *IFDEF = sub () { 0 };
+        die "Must have 'ifdef' version 0.07 or higher to handle on demand loading\n"
+          if $ifdef::VERSION < 0.07;
+        *IFDEF= sub () { 1 };
     }
 
-#  If we're supposed to trace
-#   Set compile time flag indicating we want a trace to STDERR
-#   Create the subroutine for showing the trace
-#  Else
-#   Set compile time flag indicating we DON'T want a trace to STDERR
+    # ifdef not loaded
+    else {
+        *IFDEF= sub () { 0 };
+    }
 
+    # we're supposed to trace
     if ($ENV{'LOAD_TRACE'}) {
-        *TRACE = sub () { 1 };
+        *TRACE= sub () { 1 };
         eval <<'EOD'; # only way to ensure it isn't there when we're not tracing
 sub _trace {
     my $tid = $threads::VERSION ? ' ['.threads->tid.']' : '';
     warn "load$tid: ",$_[0],$/;
 } #_trace
 EOD
-    } else {
-        *TRACE = sub () { 0 };
     }
 
-#  Allow for dirty tricks
-#  Save current code ref of UNIVERSAL::can (will continue inside closure)
-#  Replace it with something that will also check on demand subroutines
+    # we're not supposed to trace
+    else {
+        *TRACE= sub () { 0 };
+    }
 
+    # make sure we intercept ->can
     no warnings 'redefine';
-    my $can = \&UNIVERSAL::can;
-    *UNIVERSAL::can = sub {
+    my $can= \&UNIVERSAL::can;
+    *UNIVERSAL::can= sub {
         &{$can}( @_ ) || (ref( $_[0] ) ? undef : _can( @_ ))
     };
 } #BEGIN
 
-# Hash with modules that should be used extra, keyed to package
-
+# hash with modules that should be used extra, keyed to package
 my %use;
 
-# Satisfy -require-
-
+# satisfy -require-
 1;
 
-#---------------------------------------------------------------------------
-
-# class methods
-
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#
+# Class Methods
+#
+#-------------------------------------------------------------------------------
 #  IN: 1 class (ignored)
 #      2 package for which to add additional use-s
 #      3 additional module to be used
 
-sub register { $use{$_[1]} = ($use{$_[1]} || '')."use $_[2];" } #register
+sub register { $use{ $_[1] }= ( $use{ $_[1] } || '' ) . "use $_[2];" } #register
 
-#---------------------------------------------------------------------------
-
-# standard Perl features
-
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#
+# Standard Perl Features
+#
+#-------------------------------------------------------------------------------
 #  IN: 1 class (ignored)
 #      2..N various parameters
 
 sub import {
-
-# Obtain the class (so we can check whether load or AutoLoader usage)
-# Obtain caller info
-# Initialize the context flag
-
     my $class  = shift;
     my ($module,undef,$lineno) = caller();
 
-# If there were any parameters specified
-#  Initialize the autoload export flag
-#  Initialize the scan flag
-#  Create local copy of load now flag
-
+    # need to check / handle parameters specified
     if (@_) {
-        my $inmain = $module eq 'main';
-        my $autoload = !$inmain;
-        my $scan = 1;
-        my $thisnow = $now;
+        my $inmain=   ( $module eq 'main' );
+        my $autoload= !$inmain;
+        my $scan=     1;
+        my $thisnow=  $now;
 
-#  For all of the parameters specified
-#   If we want to load everything now
-#    Set flags accordingly
-
+        # check each parameter separately
         foreach (@_) {
-            if ($_ eq 'now') {
-                ($inmain ? $now = $thisnow : $thisnow) = $scan = 1;
 
-#   Elsif we want to load ondemand
-#    Set flags accordingly
+            # handle "now"
+            if ( $_ eq 'now' ) {
+                ( $inmain ? $now= $thisnow : $thisnow )= $scan= 1;
+            }
 
-            } elsif ($_ eq 'ondemand') {
-                ($inmain ? $now = $thisnow : $thisnow) = 0;
-                $scan = 1;
+            # handle "ondemand"
+            elsif ( $_ eq 'ondemand' ) {
+                ( $inmain ? $now= $thisnow : $thisnow )= 0;
+                $scan= 1;
+            }
 
-#   Elseif we want to export AUTOLOAD sub (AUTOLOAD = AutoLoader compatible)
-#    Die now if we're called from a script
-#    Mark to export AUTOLOAD
-
-            } elsif (m#^(?:autoload|AUTOLOAD)$#) {
+            # want to export AUTOLOAD sub (AUTOLOAD = AutoLoader compatible)
+            elsif ( m#^(?:autoload|AUTOLOAD)$# ) {
                 die "Can not $_ in main namespace" if $inmain;
-                $autoload = 1;
+                $autoload= 1;
+            }
 
-#   Elseif we don't want to scan now
-#    Set flags accordingly
+            # don't want to scan now
+            elsif ( $_ eq 'dontscan' ) {
+                ( $inmain ? $now= $thisnow : $thisnow )= $scan= 0;
+            }
 
-            } elsif ($_ eq 'dontscan') {
-                ($inmain ? $now = $thisnow : $thisnow) = $scan = 0;
-
-#   Elseif we want the AUTOLOAD to be inherited
-#    Die now if we're called from a script
-#    Mark to _not_ export AUTOLOAD
-
-            } elsif ($_ eq 'inherit') {
+            # want to inherit AUTOLOAD
+            elsif ( $_ eq 'inherit' ) {
                 die "Can not inherit in main namespace" if $inmain;
-                $autoload = 0;
+                $autoload= 0;
+            }
 
-#   Elseif we want to enable AutoLoader mode
-#    Die now if activating AutoLoader mode from a module
-
-            } elsif ($_ eq 'AutoLoader') {
+            # want to enable AutoLoader mode
+            elsif ( $_ eq 'AutoLoader' ) {
                 die "Can only activate AutoLoader emulation mode from script"
-                 unless $inmain;
+                  if !$inmain;
 
-#    If we didn't emulate AutoLoader before
-#     Set the import routine of AutoLoader to this one
-#     Set the AUTOLOAD routine of AutoLoader to load's one
-#     Mark AutoLoader.pm as loaded so that it will not actually get loaded
+                # did not emulate AutoLoader before
+                if ( !$INC{'AutoLoader.pm'} or
+                      $INC{'AutoLoader.pm'} ne $INC{__PACKAGE__.'.pm' } ) {
+                    *AutoLoader::import=   \&import;
+                    *AutoLoader::AUTOLOAD= \&AUTOLOAD;
 
-                if (!$INC{'AutoLoader.pm'} or
-                     $INC{'AutoLoader.pm'} ne $INC{__PACKAGE__.'.pm'}) {
-                    *AutoLoader::import = \&import;
-                    *AutoLoader::AUTOLOAD = \&AUTOLOAD;
-                    $INC{'AutoLoader.pm'} = $INC{__PACKAGE__.'.pm'};
+                    # mark as loaded now, owned by us
+                    $INC{'AutoLoader.pm'}= $INC{__PACKAGE__.'.pm'};
                 }
+            }
 
-#   Else
-#    Die now indicating unknown parameter
-
-            } else {
+            # huh?
+            else {
                 die "Don't know how to handle $_";
             }
         }
 
-#   If we're in a module
-#    Scan the file, using local flag setting, if we should scan
-#    Allow for some dirty tricks
-#    Export AUTOLOAD if so requested
-
-        unless ($inmain) {
-            _scan( $module,$thisnow ) if $scan;
+        # in a module, scan it if necessary
+        if ( !$inmain ) {
+            _scan( $module, $thisnow ) if $scan;
             no strict 'refs';
-            *{$module.'::AUTOLOAD'} = \&AUTOLOAD if $autoload;
+            *{$module.'::AUTOLOAD'}= \&AUTOLOAD if $autoload;
         }
+    }
 
-# Elseif called from a script or from command line (no action from command line)
-#  Die indicating that doesn't make any sense if in a script
-
-    } elsif ($module eq 'main') {
+    # called from a script / command line, huh?
+    elsif ( $module eq 'main' ) {
        die "Does not make sense to just 'use $class;' from your script"
          if $lineno;
+    }
 
-# Else (no parameters specified)
-#  Scan the source
-#  If we're called for "load" (which exports by default)
-#   Allow for variable reference stuff
-#   And export the AUTOLOAD subroutine
-
-    } else {
+    # no parameters, scan the source
+    else {
         _scan( $module );
-        if ($class eq __PACKAGE__) {
+
+        # export AUTOLOAD if called here
+        if ( $class eq __PACKAGE__ ) {
             no strict 'refs';
-            *{$module.'::AUTOLOAD'} = \&AUTOLOAD;
+            *{$module.'::AUTOLOAD'}= \&AUTOLOAD;
         }
     }
 } #import
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 
 sub AUTOLOAD {
 
-# Obtain the module and subroutine name
-# Go execute the routine if it exists
-
+    # go execute intended AUTOLOAD if possible
     $load::AUTOLOAD =~ m#^(.*)::(.*?)$#;
-    goto &{$load::AUTOLOAD} if _can( $1,$2 );
+    goto &{$load::AUTOLOAD} if _can( $1, $2 );
 
-# Return if we requested DESTROY
-# Obtain caller information
-# Die with the appropriate information
-
+    # nothing to do if unknown DESTROY
     return if $2 eq 'DESTROY';
-    my ($package,$filename,$line) = caller;
+
+    # huh?
+    my ( $package, $filename, $line )= caller;
     die "Undefined subroutine &$load::AUTOLOAD called at $filename line $line\n";
 } #AUTOLOAD
 
-#---------------------------------------------------------------------------
-
-# internal subroutines
-
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#
+# Internal Subroutines
+#
+#-------------------------------------------------------------------------------
+# _scan
+#
+# Set up / load given module
+#
 #  IN: 1 module to scan (AAA::BBB)
 #      2 optional: flag to load everything now
 
 sub _scan {
+    my $module=  shift;
+    my $loadnow= defined( $_[0] ) ? shift : $now;
 
-# Obtain the module
-# Obtain the load now flag
-# Make sure $_ is localized properly
-# Make sure we won't clobber sensitive system vars
+    # make sure we won't clobber sensitive system vars
+    local $_= \my $foo; # make sure $_ is localized properly
+    local( $!, $@ );
 
-    my $module = shift;
-    my $loadnow = defined( $_[0] ) ? shift : $now;
-    local $_ = \my $foo;
-    local( $!,$@ );
-
-# Obtain the filename, die if failed
-# Attempt to open the file for reading, die if failed
-# Set binmode just to make sure
-
-    my $file = _filename( $module )
-     or die "Could not find file for '$module'";
-    open( VERSION,"<$file" ) # use VERSION as glob to save memory
-     or die "Could not open file '$file' for '$module': $!";
+    # open the file to read
+    my $file= _filename( $module )
+      or die "Could not find file for '$module'";
+    open( VERSION, "<$file" ) # use VERSION as glob to save memory
+      or die "Could not open file '$file' for '$module': $!";
     binmode VERSION # needed for Windows systems, apparently
-     or die "Could not set binmode on '$file': $!";
+      or die "Could not set binmode on '$file': $!";
 
-# Initialize line number
-# Initialize the within pod flag
-# Initialize the package name we're working for
-# Make sure "ifdef" starts with a clean slate if needed
-
-    my $line = 0;
-    my $pod = 0;
-    my $package = '';
+    # initializations
+    my $line=    0;
+    my $pod=     0;
+    my $package= '';
     &ifdef::reset if IFDEF; # should get optimized away if not needed
 
-# While there are lines to be read
-#  Do whatever conversions are needed
-#  Increment line number
-#  Reloop if a pod line, setting flag right on the fly
-#  Reloop now if in pod or a comment line
-#  Outloop now if we found the good stuff
-#  Reloop if there is no package specification
-#  Die now if we found a package declaration before
-#  Set the package (it's the first one)
-
-    while (<VERSION>) {
+    # look through all lines
+    while ( readline VERSION ) {
         &ifdef::oneline if IFDEF; # should get optimized away if not needed
         $line++;
-        $pod = !m#^=cut#, next if m#^=\w#;
+
+        # inside pod
+        $pod= !m#^=cut#, next if m#^=\w#;
         next if $pod or m#^\s*\##;
+
+        # we're done
         last if m#^__END__#;
-        next unless m#^package\s+([\w:]+)\s*;#;
+
+        # not a package
+        next if !m#^package\s+([\w:]+)\s*;#;
+
+        # found a package
         die "Found package '$1' after '$package'" if $package;
-        $package = $1;
+        $package= $1;
     }
 
-# Die now if there is no package
-# Die now if it is not the right package
-
-    die "Could not find package name" unless $package;
+    # huh?
+    die "Could not find package name"           if !$package;
     die "Found package $package inside '$file'" if $package ne $module;
 
-# Save the line after which __END__ sits
-# Save the offset of the first line after __END__
+    # initializations
+    my $endline=  $line+1;
+    my $endstart= tell VERSION;
 
-    my $endline = $line+1;
-    my $endstart = tell VERSION;
-
-# If we're supposed to load now
-#  Show trace info if requested
-
+    # loading now
     if ($loadnow) {
         _trace( "now $module, line $endline (offset $endstart, onwards)" )
          if TRACE;
 
-#  Create the package prelude
-#  Obtain the source in so that we can eval this under taint
-#  Eval the source code, possibly processing through 'ifdef.pm"
-#  Die now if failed
-
-        my $source = <<EOD;
+        # load the source
+        my $source= <<"SRC";
 package $module;
 no warnings;
 #line $endline "$file (loaded now from offset $endstart)"
-EOD
-        $source .= do {local $/; <VERSION> =~ m#^(.*)$#s; $1};
-        eval (IFDEF ? ifdef::process( $source ) : $source );
+SRC
+        $source .= do { local $/; readline(VERSION) =~ m#^(.*)$#s; $1 };
+        eval ( IFDEF ? ifdef::process($source) : $source );
         die "Error evaluating source: $@" if $@;
+    }
 
-# Else (we're to load everything ondemand)
-#  Initialize the start position
-#  Initialize the sub name being handled
-#  Initialize the line number of the sub being handled
-#  Initialize the original length of the line (needed only when ifdeffing)
-
-    } else {
+    # loading on demand
+    else {
         my $start;
-        my $sub = '';
+        my $sub= '';
         my $subline;
         my $length;
 
-#  While there are lines to be read
-#   Save the length of the original line if needed
-#   Do any conversions that are needed
-#   Increment line number
-#   Reloop if a pod line, setting flag right on the fly
-#   Reloop now if in pod or a comment line
-#   Outloop now if we hit the actual documentation
-
-        while (<VERSION>) {
-            $length = length if IFDEF;
+        # process all lines
+        while ( readline VERSION ) {
+            $length= length if IFDEF;
             &ifdef::oneline if IFDEF;
             $line++;
-            $pod = !m#^=cut#, next if m#^=\w#;
+
+            # inside pod
+            $pod= !m#^=cut#, next if m#^=\w#;
             next if $pod or m#^\s*\##;
+
+            # we're done
             last if m#^__END__#;
 
-#   Die now if there is a package found (while we have one already)
-#   Reloop if we didn't reach a new sub
-
+            # huh?
             die "Only one package per file: found '$1' after '$package'"
-             if m#^package\s+([\w:]+)\s*;#;
+              if m#^package\s+([\w:]+)\s*;#;
+
+            # not at next sub yet
             next unless m#^sub\s+([\w:]+)#;
 
-#   Remember the location where this sub starts
-#   Store the information of the previous sub if there was one
-#   Set the name of this sub
-#   Die now if it is fully qualified sub
-#   Remember where at which line number this sub starts
-#   Remember where at which offset this sub starts
-#  Store the information of the last sub if there was one
+            # remember where previous sub starts, if any
+            my $seek= tell(VERSION) - ( IFDEF ? $length : length );
+            _store( $module, $sub, $subline, $start, $seek - $start ) if $sub;
 
-            my $seek = tell( VERSION ) - (IFDEF ? $length : length);
-            _store( $module,$sub,$subline,$start,$seek-$start ) if $sub;
-            $sub = $1;
+            # set up for next iteration
+            $sub= $1;
             die "Cannot handle fully qualified subroutine '$sub'\n"
-             if $sub =~ m#::#;
-            $subline = $line;
-            $start = $seek;
+              if $sub =~ m#::#;
+            $subline= $line;
+            $start=   $seek;
         }
+
+        # store rest as a sub, if any
         _store(
           $module,
           $sub,
           $subline,
           $start,
-          (defined() ? tell( VERSION ) - length() : -s VERSION) - $start
+          ( defined() ? tell(VERSION) - length() : -s VERSION ) - $start
         ) if $sub;
     }
 
-# Mark this module as scanned
-# Close the handle, we're done
+    # we're done
+    $load::AUTOLOAD{$module}= undef;
+    close VERSION;
 
-    $load::AUTOLOAD{$module} = undef;
-    close( VERSION );
+    return;
 } #_scan
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# _filename
+#
+# Return filename of module
+#
 #  IN: 1 module name (AAA::BBB)
 # OUT: 1 filename (/..../AAA/BBB.pm) or undef if not known
 
 sub _filename {
 
-# Obtain the key
-# Convert the ::'s to /'s
-# Return whatever is available for that
+    # return filename from %INC
+    ( my $key= $_[0] ) =~ s#::#/#g;
+    my $filename= $INC{"$key.pm"};
+    return $filename if !ref $filename;
 
-    (my $key = $_[0]) =~ s#::#/#g;
-    my $filename = $INC{"$key.pm"};
-    return $filename unless ref $filename;
-    $filename = $filename->( "$key.pm" );
-    $filename;
+    # return result of call instead
+    return $filename->("$key.pm");
 } #_filename
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# _store
+#
+# Store information about subroutine in memory for later usage
+#
 #  IN: 1 module name
 #      2 subroutine name (not fully qualified)
 #      3 line number where sub starts
@@ -417,94 +355,83 @@ sub _filename {
 #      5 number of bytes to read
 
 sub _store {
-
-# Show trace info if so requested
-# Make sure there is a stub
-# Die now if there was an error
-# Store the data
-
     _trace( "store $_[0]::$_[1], line $_[2] (offset $_[3], $_[4] bytes)" )
-     if TRACE;
+      if TRACE;
+
+    # huh?
     eval "package $_[0]; sub $_[1]";
     die "Could not create stub: $@\n" if $@;
-    $load::AUTOLOAD{$_[0],$_[1]} = pack( 'L3',$_[2],$_[3],$_[4] )
+
+    # store the data
+    $load::AUTOLOAD{ $_[0], $_[1] }= pack( 'w3', $_[2], $_[3], $_[4] )
 } #_store
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# _can
+#
+# Our version of ->can
+#
 #  IN: 1 module to load subroutine from
 #      2 subroutine to load
 # OUT: 1 reference to subroutine (if exists and loaded, else undef)
 
 sub _can {
+    my ( $module, $sub )= @_;
 
-# Obtain the module and subroutine name
-# Return now if trying for application (the real UNIVERSAL::can should do that)
-
-    my ($module,$sub) = @_;
+    # nothing to do here
     return if $module eq 'main';
 
-# Scan the file if it wasn't done yet
-# Obtain coordinates of subroutine
-# Return now if not known
-
+    # scan file if we need to
     _scan( $module ) unless exists $load::AUTOLOAD{$module};
-    my ($subline,$start,$length) =
-     unpack( 'L3',$load::AUTOLOAD{$module,$sub} || '' );
-    return unless $start;
 
-# Make sure we don't clobber sensitive system variables
-# Obtain the filename or die
-# Open the file or die
-# Set binmode just to make sure
-# Seek to the right place or die
+    # huh?  unknown sub?
+    my ( $subline, $start, $length )=
+      unpack( 'w3', $load::AUTOLOAD{ $module, $sub } || '' );
+    return if !$start;
 
-    local( $!,$@ );
-    my $file = _filename( $module )
-     or die "Could not find file for '$module.pm'";
-    open( VERSION,"<$file" ) # use VERSION glob to conserve memory
-     or die "Could not open file '$file' for '$module.pm': $!";
+    # seek in the file where the source lives
+    local( $!, $@ );
+    my $file= _filename( $module )
+      or die "Could not find file for '$module.pm'";
+    open( VERSION, "<$file" ) # use VERSION glob to conserve memory
+      or die "Could not open file '$file' for '$module.pm': $!";
     binmode VERSION # needed for Windows systems, apparently
-     or die "Could not set binmode on '$file': $!";
-    seek( VERSION,$start,0 )
-     or die "Could not seek to $start for $module\::$sub";
+      or die "Could not set binmode on '$file': $!";
+    seek( VERSION, $start, 0 )
+      or die "Could not seek to $start for $module\::$sub";
 
-# Show trace info if so requested
-# Initialize the source to be evalled
-
+    # set up evallable pre-amble
     _trace( "ondemand ${module}::$sub, line $subline (offset $start, $length bytes)" ) if TRACE;
-    my $use = $use{$module} || '';
-    my $source = <<EOD;
+    my $use=    $use{$module} || '';
+    my $source= <<"SRC";
 package $module;
 no warnings;$use
 #line $subline "$file (loaded on demand from offset $start for $length bytes)"
-EOD
+SRC
 
-# Add the source of the subroutine to it and get number of bytes read
-# Die now if we didn't get what we expected
-# Close the handle
-
-    my $read = read( VERSION,$source,$length,length($source) );
+    # get the stuff
+    my $read= read( VERSION, $source, $length, length($source) );
     die "Error reading source: only read $read bytes instead of $length"
-     if $read != $length;
+      if $read != $length;
     close VERSION;
 
-# Make sure "ifdef" starts with a clean slate
-# Create an untainted version of the source code
-# Evaluate the source we have now
-# Die now if failed
-# Remove the info of this sub (it's not needed anymore)
-# Return the code reference to what we just loaded
+    # initializations
+    &ifdef::reset if IFDEF; # make sure "ifdef" starts afresh
+    my $original= $source;
 
-    &ifdef::reset if IFDEF; # should get optimized away if not needed
-my $original = $source;
-    $source =~ m#^(.*)$#s; $source = IFDEF ? ifdef::process( $1 ) : $1;
+    # eval untainted copy
+    $source =~ m#^(.*)$#s;
+    $source= IFDEF ? ifdef::process($1) : $1;
     eval $source;
     die "load: $@\n$original====================\n$source" if $@;
-    delete $load::AUTOLOAD{$module,$sub};
-    return \&{$module.'::'.$sub};
+
+    # done this one
+    delete $load::AUTOLOAD{ $module, $sub };
+
+    return \&{ $module . '::' . $sub };
 } #_can
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 
 __END__
 
@@ -530,7 +457,7 @@ load - control when subroutines will be loaded
 
 =head1 VERSION
 
-This documentation describes version 0.20.
+This documentation describes version 0.21.
 
 =head1 DESCRIPTION
 
@@ -932,9 +859,10 @@ Please report bugs to <perlbugs@dijkmat.nl>.
 
 =head1 COPYRIGHT
 
-Copyright (c) 2002-2007 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
-reserved.  This program is free software; you can redistribute it and/or
-modify it under the same terms as Perl itself.
+Copyright (c) 2002, 2003, 2004, 2005, 2006, 2007, 2010, 2012 Elizabeth
+Mattijsen <liz@dijkmat.nl>. All rights reserved.  This program is free
+software; you can redistribute it and/or modify it under the same terms
+as Perl itself.
 
 =head1 SEE ALSO
 
