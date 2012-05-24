@@ -1,6 +1,6 @@
 package load;
 
-$VERSION= '0.21';
+$VERSION= '0.23';
 
 #-------------------------------------------------------------------------------
 # No, we're NOT using strict here.  There are several reasons, the most
@@ -457,7 +457,7 @@ load - control when subroutines will be loaded
 
 =head1 VERSION
 
-This documentation describes version 0.21.
+This documentation describes version 0.23.
 
 =head1 DESCRIPTION
 
@@ -741,7 +741,7 @@ Does B<not> export the generic AUTOLOAD subroutine, but inherits it from its
 base class.  Also implicitely specifies the "dontscan" keyword, causing the
 source of the module to be scanned only when the first not yet loaded
 subroutine is about to be executed.  If you only want to have the "inherit"
-keyword functionality, then you must specify that explicitely:
+keyword functionality, then you must specify that explicitly:
 
  package Your::Module::Adapted;
  @ISA = qw(Your::Module);
